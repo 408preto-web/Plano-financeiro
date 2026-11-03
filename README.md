@@ -29,16 +29,24 @@ Funciona **offline**, abre em tela cheia como um app nativo e **seus dados ficam
 
 ## Como colocar no seu iPad
 
-### 1. Publicar o site (uma vez só)
+### 1. Publicar o site (uma vez só — dá para fazer pelo Safari do iPad)
 
-1. No GitHub, abra o repositório → **Settings** → **Pages**.
+**Passo A – Tornar o repositório público** (na conta gratuita o GitHub só publica sites de repositórios públicos)
+1. Abra `github.com/408preto-web/Plano-financeiro` e entre na sua conta.
+2. Toque em **Settings** (barra superior do repositório; se não aparecer, toque em "…").
+3. Role até o fim, em **Danger Zone** → **Change visibility** → **Change to public** e confirme.
+
+> Só o **código** fica público. Seus **dados financeiros não** — eles ficam somente no iPad.
+
+**Passo B – Ligar o site**
+1. Em **Settings**, toque em **Pages** (menu lateral).
 2. Em **Build and deployment → Source**, escolha **GitHub Actions**.
-3. Vá em **Actions** → **Publicar no GitHub Pages** → **Run workflow** (ou faça qualquer push).
-4. Ao terminar, o endereço aparece em Settings → Pages, algo como
-   `https://408preto-web.github.io/Plano-financeiro/`.
 
-> Se o repositório for privado, o GitHub Pages pode exigir plano pago. Nesse caso, torne o repositório público
-> (o código é público, mas **seus dados financeiros não** — eles ficam somente no iPad).
+**Passo C – Publicar**
+1. Toque em **Actions** (barra superior) → **Publicar no GitHub Pages** → **Run workflow** → **Run workflow**.
+2. Aguarde ~1 minuto até aparecer o ✅ verde.
+
+Endereço do app: **https://408preto-web.github.io/Plano-financeiro/**
 
 ### 2. Instalar no iPad
 
