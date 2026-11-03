@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Plano Financeiro</title>
+  <meta name="description" content="Controle financeiro pessoal offline para iPad">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Finanças">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <nav class="sidebar" aria-label="Navegação principal">
+      <div class="brand">
+        <img src="icons/icon.svg" alt="" width="36" height="36">
+        <span>Plano Financeiro</span>
+      </div>
+      <button class="nav-item" data-view="dashboard"><span class="ni">📊</span><span>Resumo</span></button>
+      <button class="nav-item" data-view="transactions"><span class="ni">📋</span><span>Lançamentos</span></button>
+      <button class="nav-item" data-view="budgets"><span class="ni">🎯</span><span>Orçamentos</span></button>
+      <button class="nav-item" data-view="goals"><span class="ni">🏦</span><span>Metas</span></button>
+      <button class="nav-item" data-view="settings"><span class="ni">⚙️</span><span>Ajustes</span></button>
+    </nav>
+
+    <main class="content">
+      <header class="topbar">
+        <div class="month-picker">
+          <button class="icon-btn" id="prevMonth" aria-label="Mês anterior">‹</button>
+          <h1 id="monthLabel"></h1>
+          <button class="icon-btn" id="nextMonth" aria-label="Próximo mês">›</button>
+        </div>
+        <button class="btn primary" id="addBtn">+ Novo lançamento</button>
+      </header>
+      <section id="view"></section>
+    </main>
+  </div>
+
+  <button class="fab" id="fab" aria-label="Novo lançamento">+</button>
+
+  <dialog id="modal">
+    <form method="dialog" id="modalForm" class="modal-body"></form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
