@@ -11,6 +11,7 @@ const DEFAULT_CATEGORIES = [
   { id: 'c-salario', name: 'Salário', type: 'income', icon: '💼', color: '#16a34a' },
   { id: 'c-extra', name: 'Renda extra', type: 'income', icon: '💡', color: '#0d9488' },
   { id: 'c-invest', name: 'Rendimentos', type: 'income', icon: '📈', color: '#2563eb' },
+  { id: 'c-resgate', name: 'Resgate de investimento', type: 'income', icon: '🏧', color: '#0891b2' },
   { id: 'c-moradia', name: 'Moradia', type: 'expense', icon: '🏠', color: '#7c3aed' },
   { id: 'c-mercado', name: 'Mercado', type: 'expense', icon: '🛒', color: '#ea580c' },
   { id: 'c-alimentacao', name: 'Alimentação', type: 'expense', icon: '🍽️', color: '#f59e0b' },
@@ -21,6 +22,7 @@ const DEFAULT_CATEGORIES = [
   { id: 'c-contas', name: 'Contas e serviços', type: 'expense', icon: '💡', color: '#0891b2' },
   { id: 'c-assinaturas', name: 'Assinaturas', type: 'expense', icon: '📺', color: '#9333ea' },
   { id: 'c-cartao', name: 'Cartão de crédito', type: 'expense', icon: '💳', color: '#475569' },
+  { id: 'c-aplicacao', name: 'Investimentos', type: 'expense', icon: '💰', color: '#0f766e' },
   { id: 'c-outros', name: 'Outros', type: 'expense', icon: '📦', color: '#64748b' },
 ];
 
@@ -89,6 +91,8 @@ function defaultState() {
     categories: DEFAULT_CATEGORIES.map((c) => ({ ...c })),
     budgets: {},
     goals: [],
+    investments: [],
+    market: defaultMarket(),
   };
 }
 
@@ -96,12 +100,22 @@ function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultState();
-    const data = JSON.parse(raw);
-    return { ...defaultState(), ...data };
+    return migrate(JSON.parse(raw));
   } catch (e) {
     console.error(e);
     return defaultState();
   }
+}
+
+/** Completa dados salvos por versões anteriores do app. */
+function migrate(data) {
+  const s = { ...defaultState(), ...data };
+  s.market = { ...defaultMarket(), ...(data.market || {}) };
+  if (!Array.isArray(s.market.cdi) || !s.market.cdi.length) s.market.cdi = defaultMarket().cdi;
+  for (const id of ['c-aplicacao', 'c-resgate']) {
+    if (!s.categories.some((c) => c.id === id)) s.categories.push({ ...DEFAULT_CATEGORIES.find((c) => c.id === id) });
+  }
+  return s;
 }
 
 let state = loadState();
@@ -160,10 +174,12 @@ function setView(v) {
 
 function render() {
   const ml = monthName(ui.month);
-  $('#monthLabel').textContent = ml.charAt(0).toUpperCase() + ml.slice(1);
   const showMonth = ['dashboard', 'transactions', 'budgets'].includes(ui.view);
-  $('.month-picker').style.visibility = showMonth ? 'visible' : 'hidden';
-  const views = { dashboard: renderDashboard, transactions: renderTransactions, budgets: renderBudgets, goals: renderGoals, settings: renderSettings };
+  const titles = { goals: 'Metas', investments: 'Investimentos', settings: 'Ajustes' };
+  $('#monthLabel').textContent = showMonth ? ml.charAt(0).toUpperCase() + ml.slice(1) : titles[ui.view];
+  $('#monthLabel').style.textAlign = showMonth ? '' : 'left';
+  $$('#prevMonth, #nextMonth').forEach((el) => { el.style.display = showMonth ? '' : 'none'; });
+  const views = { dashboard: renderDashboard, transactions: renderTransactions, budgets: renderBudgets, goals: renderGoals, investments: renderInvestments, settings: renderSettings };
   $('#view').innerHTML = views[ui.view]();
   bindView();
 }
@@ -185,9 +201,9 @@ function txItem(t, { showDate = true } = {}) {
   </li>`;
 }
 
-function donutChart(items) {
+function donutChart(items, emptyMsg = 'Sem despesas neste mês') {
   const total = items.reduce((s, i) => s + i.value, 0);
-  if (!total) return '<div class="empty">Sem despesas neste mês</div>';
+  if (!total) return `<div class="empty">${emptyMsg}</div>`;
   const r = 70, cx = 90, cy = 90, sw = 26, C = 2 * Math.PI * r;
   let offset = 0;
   const segs = items.map((i) => {
@@ -199,7 +215,7 @@ function donutChart(items) {
   }).join('');
   const legend = items.map((i) => `<li><span class="dot" style="background:${i.color}"></span><span>${i.icon} ${esc(i.label)}</span><span class="v">${money(i.value)} <span class="muted">${Math.round(i.value / total * 100)}%</span></span></li>`).join('');
   return `<div class="donut-layout">
-    <div class="chart-wrap"><svg viewBox="0 0 180 180" role="img" aria-label="Despesas por categoria">${segs}
+    <div class="chart-wrap"><svg viewBox="0 0 180 180" role="img" aria-label="Gráfico de distribuição">${segs}
       <text x="90" y="86" text-anchor="middle" font-size="12" fill="var(--muted)">Total</text>
       <text x="90" y="104" text-anchor="middle" font-size="15" font-weight="700" fill="var(--text)">${moneyShort(total)}</text>
     </svg></div>
@@ -262,7 +278,7 @@ function renderDashboard() {
     <div class="card stat"><div class="label">Resultado do mês</div><div class="value ${t.balance >= 0 ? 'pos' : 'neg'}">${money(t.balance)}</div>
       <div class="sub">${t.income ? Math.round((t.balance / t.income) * 100) + '% da renda' : '—'}</div></div>
     <div class="card stat"><div class="label">Saldo acumulado</div><div class="value ${acc >= 0 ? '' : 'neg'}">${money(acc)}</div>
-      <div class="sub">efetivado até o fim do mês</div></div>
+      <div class="sub">${state.investments.length ? '+ ' + money(portfolioTotals().gross) + ' investidos' : 'efetivado até o fim do mês'}</div></div>
   </div>
 
   <div class="grid cols-2 mt">
@@ -475,6 +491,7 @@ function bindView() {
     $$('[data-deposit]', v).forEach((el) => el.addEventListener('click', () => openGoalMove(el.dataset.deposit, 1)));
     $$('[data-withdraw]', v).forEach((el) => el.addEventListener('click', () => openGoalMove(el.dataset.withdraw, -1)));
   }
+  if (ui.view === 'investments') bindInvestments(v);
   if (ui.view === 'settings') {
     $('#newCat').addEventListener('click', () => openCatForm());
     $$('[data-editcat]', v).forEach((el) => el.addEventListener('click', () => openCatForm(state.categories.find((c) => c.id === el.dataset.editcat))));
@@ -730,7 +747,7 @@ function importJson(e) {
       const data = JSON.parse(reader.result);
       if (!Array.isArray(data.transactions) || !Array.isArray(data.categories)) throw new Error('formato');
       if (!confirm(`Restaurar backup com ${data.transactions.length} lançamentos? Os dados atuais serão substituídos.`)) return;
-      state = { ...defaultState(), ...data };
+      state = migrate(data);
       save(); setView('dashboard'); toast('Backup restaurado');
     } catch {
       alert('Arquivo de backup inválido.');
@@ -782,6 +799,20 @@ function loadDemo() {
     if (i % 3 === 0) add(ym, 16, 'expense', 'c-saude', 'Farmácia', 140 * r());
   }
   state.budgets = { ...state.budgets, 'c-mercado': 130000, 'c-alimentacao': 40000, 'c-lazer': 35000, 'c-transporte': 50000 };
+  if (!state.investments.length) {
+    const ago = (m) => `${addMonths(base, -m)}-05`;
+    state.market.cdi = [{ date: '2000-01-01', rate: 14.9 }];
+    state.investments.push(
+      { id: uid(), name: 'CDB Banco Digital', kind: 'cdb', indexer: 'cdi', rate: 110, taxFree: false, maturity: `${addMonths(base, 24)}-05`,
+        movements: [{ id: uid(), date: ago(14), amount: 1000000 }, { id: uid(), date: ago(6), amount: 300000 }] },
+      { id: uid(), name: 'LCI 2 anos', kind: 'lci', indexer: 'cdi', rate: 92, taxFree: true, maturity: `${addMonths(base, 10)}-20`,
+        movements: [{ id: uid(), date: ago(10), amount: 500000 }] },
+      { id: uid(), name: 'Tesouro IPCA+ 2035', kind: 'tesouro_ipca', indexer: 'ipca', rate: 7.1, taxFree: false, maturity: '2035-05-15',
+        movements: [{ id: uid(), date: ago(20), amount: 400000 }] },
+      { id: uid(), name: 'Carteira de ações', kind: 'acoes', indexer: 'manual', rate: 0, taxFree: false, maturity: '',
+        movements: [{ id: uid(), date: ago(12), amount: 600000 }], currentValue: 668000, valueUpdatedAt: todayISO() },
+    );
+  }
   if (!state.goals.length) {
     state.goals.push({ id: uid(), name: 'Reserva de emergência', icon: '🛟', target: 3000000, saved: 1150000, deadline: `${addMonths(base, 12)}-01` });
     state.goals.push({ id: uid(), name: 'Viagem de férias', icon: '✈️', target: 800000, saved: 210000, deadline: `${addMonths(base, 8)}-01` });
@@ -794,7 +825,7 @@ $('#prevMonth').addEventListener('click', () => { ui.month = addMonths(ui.month,
 $('#nextMonth').addEventListener('click', () => { ui.month = addMonths(ui.month, 1); render(); });
 $('#addBtn').addEventListener('click', () => openTxForm());
 $('#fab').addEventListener('click', () => openTxForm());
-$('#monthLabel').addEventListener('click', () => { ui.month = monthOf(todayISO()); render(); });
+$('#monthLabel').addEventListener('click', () => { if (!['dashboard', 'transactions', 'budgets'].includes(ui.view)) return; ui.month = monthOf(todayISO()); render(); });
 
 // Atalhos de teclado (Magic Keyboard)
 document.addEventListener('keydown', (e) => {
@@ -802,7 +833,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openTxForm(); }
   if (e.key === 'ArrowLeft') { ui.month = addMonths(ui.month, -1); render(); }
   if (e.key === 'ArrowRight') { ui.month = addMonths(ui.month, 1); render(); }
-  const map = { 1: 'dashboard', 2: 'transactions', 3: 'budgets', 4: 'goals', 5: 'settings' };
+  const map = { 1: 'dashboard', 2: 'transactions', 3: 'budgets', 4: 'goals', 5: 'investments', 6: 'settings' };
   if (map[e.key]) setView(map[e.key]);
 });
 

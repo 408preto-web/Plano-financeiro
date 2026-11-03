@@ -13,10 +13,19 @@ Funciona **offline**, abre em tela cheia como um app nativo e **seus dados ficam
 - **Contas pendentes**: lista do que ainda falta pagar ou receber no mês.
 - **Orçamentos**: limite mensal por categoria com barra de progresso (amarelo a 80%, vermelho quando estoura).
 - **Metas**: reserva de emergência, viagem etc., com quanto guardar por mês para chegar no prazo.
+- **Investimentos**: CDB, LCI/LCA, Tesouro (Selic, Prefixado, IPCA+), poupança, fundos, ações, FIIs e cripto.
+  - Rendimento calculado automaticamente para % do CDI, Selic, prefixado, IPCA+ e poupança (252 dias úteis, descontando feriados nacionais).
+  - **CDI ajustável**: em *Investimentos → Atualizar CDI* informe a nova taxa e a data em que passa a valer.
+    O histórico é mantido, então o que já rendeu não muda; só os dias seguintes usam a taxa nova.
+  - Projeção do IPCA também editável.
+  - IR regressivo estimado (22,5% → 15%) e isenção para LCI/LCA/poupança.
+  - Aportes e resgates (podem gerar o lançamento correspondente automaticamente).
+  - Ações/FIIs/cripto: você atualiza o valor de mercado manualmente.
+  - Gráfico de distribuição da carteira e **simulador** de rendimento com aportes mensais.
 - **Categorias** personalizáveis (nome, emoji, cor).
 - **Backup**: exporta/restaura um arquivo `.json` (salve no iCloud Drive) e exporta planilha `.csv` (abre no Numbers/Excel).
 - Modo escuro automático e atalhos de teclado para o Magic Keyboard:
-  `N` novo lançamento · `←`/`→` muda o mês · `1`–`5` troca de tela.
+  `N` novo lançamento · `←`/`→` muda o mês · `1`–`6` troca de tela.
 
 ## Como colocar no seu iPad
 
@@ -58,7 +67,8 @@ Em **Ajustes → Carregar dados de exemplo** você pode ver o app preenchido.
 |---|---|
 | `index.html` | Estrutura da página |
 | `styles.css` | Visual (adaptado para iPad, retrato/paisagem e Split View) |
-| `app.js` | Toda a lógica do app |
+| `app.js` | Lógica principal do app |
+| `invest.js` | Investimentos, CDI/IPCA e simulador |
 | `sw.js` | Service worker (funcionamento offline) |
 | `manifest.webmanifest` | Configuração para instalar como app |
 | `icons/` | Ícones do app |
