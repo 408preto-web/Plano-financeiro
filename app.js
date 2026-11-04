@@ -93,6 +93,8 @@ function defaultState() {
     goals: [],
     investments: [],
     market: defaultMarket(),
+    openingBalance: 0,     // ajustado em “Saldo em conta” (centavos)
+    balanceSetAt: null,
   };
 }
 
@@ -145,14 +147,18 @@ function totals(list) {
   return { income, expense, balance: income - expense, pendingExpense, pendingIncome };
 }
 
-/** Saldo acumulado (somente lançamentos efetivados) até o fim do mês informado. */
-function accumulatedBalance(ym) {
-  let b = 0;
+/**
+ * Saldo em conta: saldo inicial + lançamentos até a data informada (inclusive).
+ * Por padrão conta só o que já foi pago/recebido; com includePending conta também o previsto.
+ */
+function accountBalance(untilISO, includePending = false) {
+  let b = state.openingBalance || 0;
   for (const t of state.transactions) {
-    if (monthOf(t.date) <= ym && t.paid) b += t.type === 'income' ? t.amount : -t.amount;
+    if (t.date <= untilISO && (t.paid || includePending)) b += t.type === 'income' ? t.amount : -t.amount;
   }
   return b;
 }
+const endOfMonth = (ym) => { const [y, m] = ym.split('-').map(Number); return `${ym}-${pad(new Date(y, m, 0).getDate())}`; };
 
 /* ---------- Toast ---------- */
 let toastTimer;
@@ -248,7 +254,14 @@ function barsChart(months) {
 function renderDashboard() {
   const list = txOfMonth(ui.month);
   const t = totals(list);
-  const acc = accumulatedBalance(ui.month);
+  const today = todayISO();
+  const isCurrent = ui.month === monthOf(today);
+  const isPast = ui.month < monthOf(today);
+  // Mês atual/passado: saldo real hoje (ou no fim do mês passado). Mês futuro: projeção.
+  const bal = isPast ? accountBalance(endOfMonth(ui.month)) : isCurrent ? accountBalance(today) : accountBalance(endOfMonth(ui.month), true);
+  const forecast = accountBalance(endOfMonth(ui.month), true);
+  const shortMonth = monthName(ui.month, { month: 'short' }).replace('.', '');
+  const invested = state.investments.length ? portfolioTotals().gross : 0;
 
   const byCat = {};
   list.filter((x) => x.type === 'expense').forEach((x) => { byCat[x.categoryId] = (byCat[x.categoryId] || 0) + x.amount; });
@@ -271,14 +284,19 @@ function renderDashboard() {
 
   return `
   <div class="grid cols-4">
+    <button class="card stat balance-card" id="balanceCard" aria-label="Ajustar saldo em conta">
+      <div class="label">${isPast ? `Saldo em conta (fim de ${shortMonth})` : isCurrent ? 'Saldo em conta hoje' : `Saldo previsto (fim de ${shortMonth})`} <span class="edit-hint">✎</span></div>
+      <div class="value ${bal >= 0 ? '' : 'neg'}">${money(bal)}</div>
+      <div class="sub">${state.balanceSetAt == null ? 'Toque para informar seu saldo'
+        : isCurrent ? `Previsto no fim de ${shortMonth}: <b class="${forecast >= 0 ? '' : 'neg'}">${money(forecast)}</b>` : 'conforme lançamentos'}
+        ${invested ? `<br>+ ${money(invested)} investidos` : ''}</div>
+    </button>
     <div class="card stat"><div class="label">Receitas</div><div class="value pos">${money(t.income)}</div>
       <div class="sub">${t.pendingIncome ? money(t.pendingIncome) + ' a receber' : 'tudo recebido'}</div></div>
     <div class="card stat"><div class="label">Despesas</div><div class="value neg">${money(t.expense)}</div>
       <div class="sub">${t.pendingExpense ? money(t.pendingExpense) + ' a pagar' : 'tudo pago'}</div></div>
     <div class="card stat"><div class="label">Resultado do mês</div><div class="value ${t.balance >= 0 ? 'pos' : 'neg'}">${money(t.balance)}</div>
       <div class="sub">${t.income ? Math.round((t.balance / t.income) * 100) + '% da renda' : '—'}</div></div>
-    <div class="card stat"><div class="label">Saldo acumulado</div><div class="value ${acc >= 0 ? '' : 'neg'}">${money(acc)}</div>
-      <div class="sub">${state.investments.length ? '+ ' + money(portfolioTotals().gross) + ' investidos' : 'efetivado até o fim do mês'}</div></div>
   </div>
 
   <div class="grid cols-2 mt">
@@ -469,6 +487,7 @@ function bindView() {
   const v = $('#view');
   $$('[data-tx]', v).forEach((el) => el.addEventListener('click', () => openTxForm(state.transactions.find((t) => t.id === el.dataset.tx))));
   $$('[data-go]', v).forEach((el) => el.addEventListener('click', () => setView(el.dataset.go)));
+  $('#balanceCard', v)?.addEventListener('click', openBalanceForm);
 
   if (ui.view === 'transactions') {
     const fq = $('#fq');
@@ -627,6 +646,27 @@ function openTxForm(tx) {
       $('#repeatCountWrap').style.visibility = e.target.value === 'once' ? 'hidden' : 'visible';
     });
   });
+}
+
+function openBalanceForm() {
+  const today = todayISO();
+  const cur = accountBalance(today);
+  openModal(`
+    <h2>🏦 Saldo em conta</h2>
+    <p class="muted" style="margin-top:-6px">Abra o app do seu banco e informe o saldo disponível <b>hoje</b>.
+      A partir daí, o app atualiza o saldo sozinho com cada receita e despesa marcada como paga/recebida.</p>
+    <label class="field"><span>Saldo atual no banco (R$)</span>
+      <input class="amount-input" name="amount" inputmode="decimal" placeholder="0,00" value="${state.balanceSetAt != null ? centsToInput(cur) : ''}" required autocomplete="off"></label>
+    <label class="check"><input type="checkbox" name="negative" ${cur < 0 ? 'checked' : ''}><span>Saldo negativo (cheque especial)</span></label>
+    ${state.balanceSetAt ? `<p class="muted" style="font-size:13px">Último ajuste: ${new Date(state.balanceSetAt).toLocaleString('pt-BR')}</p>` : ''}
+    <div class="modal-actions"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="save">Salvar</button></div>`,
+  (action, fd) => {
+    const value = Math.abs(parseMoney(fd.get('amount'))) * (fd.get('negative') === 'on' ? -1 : 1);
+    // Guarda o saldo inicial necessário para que o saldo de hoje bata com o informado.
+    state.openingBalance = (state.openingBalance || 0) + (value - cur);
+    state.balanceSetAt = Date.now();
+    save(); render(); toast('Saldo atualizado');
+  }, () => setTimeout(() => { const el = $('[name="amount"]', modalForm); el.focus(); el.select(); }, 50));
 }
 
 function openBudgetForm(catId) {

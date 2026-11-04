@@ -264,3 +264,13 @@ dialog::backdrop { background: rgba(10, 15, 20, .45); backdrop-filter: blur(3px)
   .sim-grid { grid-template-columns: 1fr; }
   .sim-result { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Cartão de saldo em conta (clicável) */
+.balance-card {
+  text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%;
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+}
+.balance-card:active { transform: scale(.98); }
+.balance-card .edit-hint { float: right; color: var(--primary); font-size: 15px; }
+.balance-card .sub b { font-weight: 650; }

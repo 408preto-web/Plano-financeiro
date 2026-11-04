@@ -5,7 +5,9 @@ Funciona **offline**, abre em tela cheia como um app nativo e **seus dados ficam
 
 ## O que dá para fazer
 
-- **Resumo do mês**: receitas, despesas, resultado, saldo acumulado, gráfico de despesas por categoria e comparativo dos últimos 6 meses.
+- **Saldo em conta**: informe o saldo real do banco uma vez (toque no cartão no Resumo) e o app atualiza sozinho
+  a cada receita/despesa paga, mostrando também o saldo previsto para o fim do mês.
+- **Resumo do mês**: saldo em conta, receitas, despesas, resultado, gráfico de despesas por categoria e comparativo dos últimos 6 meses.
 - **Lançamentos**: receitas e despesas com categoria, data, observações e situação (pago / a pagar, recebido / a receber).
   - **Parcelado**: divide uma compra em N parcelas mensais (ex.: 10x).
   - **Fixo mensal**: repete o mesmo valor por N meses (aluguel, assinaturas, salário).
