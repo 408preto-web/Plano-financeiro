@@ -131,6 +131,8 @@ const ui = {
   view: 'dashboard',
   month: monthOf(todayISO()),
   filter: { q: '', type: 'all', cat: 'all', status: 'all' },
+  quickText: '',   // texto em digitação no lançamento rápido
+  lastQuick: null, // último lançamento rápido (para desfazer)
 };
 
 function save() {
@@ -300,6 +302,7 @@ function renderDashboard() {
 
   return `
   ${alertsBanner()}
+  ${quickBar()}
   <div class="grid cols-4">
     <button class="card stat balance-card" id="balanceCard" aria-label="Ajustar saldo em conta">
       <div class="label">${isPast ? `Saldo em conta (fim de ${shortMonth})` : isCurrent ? 'Saldo em conta hoje' : `Saldo previsto (fim de ${shortMonth})`} <span class="edit-hint">✎</span></div>
@@ -349,6 +352,7 @@ function renderTransactions() {
 
   const catOpts = state.categories.map((c) => `<option value="${c.id}" ${f.cat === c.id ? 'selected' : ''}>${c.icon} ${esc(c.name)}</option>`).join('');
   return `
+  ${quickBar()}
   <div class="card">
     <div class="filters">
       <input type="search" id="fq" placeholder="Buscar descrição ou categoria…" value="${esc(f.q)}">
@@ -512,6 +516,7 @@ function bindView() {
   $$('[data-go]', v).forEach((el) => el.addEventListener('click', () => setView(el.dataset.go)));
   $('#balanceCard', v)?.addEventListener('click', openBalanceForm);
   bindCardActions(v);
+  bindQuick(v);
 
   if (ui.view === 'transactions') {
     const fq = $('#fq');
@@ -577,6 +582,34 @@ modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); 
 function catOptions(type, selected) {
   return state.categories.filter((c) => c.type === type)
     .map((c) => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${c.icon} ${esc(c.name)}</option>`).join('');
+}
+
+/**
+ * Cria lançamento(s) novos. repeat: 'once' | 'installments' (divide o valor) | 'monthly' (mesmo valor todo mês).
+ * Retorna os lançamentos criados.
+ */
+function addTransactions(data, repeat = 'once', count = 1) {
+  const created = [];
+  if (repeat !== 'installments' && repeat !== 'monthly') {
+    created.push({ id: uid(), createdAt: Date.now(), ...data });
+  } else {
+    count = Math.max(2, Math.min(120, Number(count) || 2));
+    const groupId = uid();
+    const per = repeat === 'installments' ? Math.floor(data.amount / count) : data.amount;
+    const remainder = repeat === 'installments' ? data.amount - per * count : 0;
+    for (let i = 0; i < count; i++) {
+      created.push({
+        ...data,
+        id: uid(), createdAt: Date.now() + i, groupId,
+        amount: per + (i === 0 ? remainder : 0),
+        date: addMonthsToDate(data.date, i),
+        paid: data.cardId ? true : i === 0 ? data.paid : false,
+        installment: repeat === 'installments' ? `${i + 1}/${count}` : '',
+      });
+    }
+  }
+  state.transactions.push(...created);
+  return created;
 }
 
 function openTxForm(tx, defaults = {}) {
@@ -659,25 +692,7 @@ function openTxForm(tx, defaults = {}) {
         if (next.length) toast(`Atualizado este e mais ${next.length} mês(es)`);
       }
     } else {
-      const repeat = fd.get('repeat');
-      const count = Math.max(2, Math.min(120, Number(fd.get('count')) || 2));
-      if (repeat === 'once') {
-        state.transactions.push({ id: uid(), createdAt: Date.now(), ...data });
-      } else {
-        const groupId = uid();
-        const per = repeat === 'installments' ? Math.floor(amount / count) : amount;
-        const remainder = repeat === 'installments' ? amount - per * count : 0;
-        for (let i = 0; i < count; i++) {
-          state.transactions.push({
-            ...data,
-            id: uid(), createdAt: Date.now() + i, groupId,
-            amount: per + (i === 0 ? remainder : 0),
-            date: addMonthsToDate(data.date, i),
-            paid: data.cardId ? true : i === 0 ? data.paid : false,
-            installment: repeat === 'installments' ? `${i + 1}/${count}` : '',
-          });
-        }
-      }
+      addTransactions(data, fd.get('repeat'), Number(fd.get('count')));
     }
     save(); render();
     if (!(isEdit && fd.get('applyFuture') === 'on')) toast(isEdit ? 'Lançamento atualizado' : 'Lançamento salvo');
@@ -981,6 +996,7 @@ $('#monthLabel').addEventListener('click', () => { if (!['dashboard', 'transacti
 document.addEventListener('keydown', (e) => {
   if (modal.open || e.target.matches('input, textarea, select')) return;
   if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openTxForm(); }
+  if (e.key === '/' && $('#quickInput')) { e.preventDefault(); $('#quickInput').focus(); }
   if (e.key === 'ArrowLeft') { ui.month = addMonths(ui.month, -1); render(); }
   if (e.key === 'ArrowRight') { ui.month = addMonths(ui.month, 1); render(); }
   const map = { 1: 'dashboard', 2: 'transactions', 3: 'cards', 4: 'budgets', 5: 'goals', 6: 'investments', 7: 'settings' };

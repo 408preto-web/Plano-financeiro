@@ -7,6 +7,10 @@ Funciona **offline**, abre em tela cheia como um app nativo e **seus dados ficam
 
 - **Saldo em conta**: informe o saldo real do banco uma vez (toque no cartão no Resumo) e o app atualiza sozinho
   a cada receita/despesa paga, mostrando também o saldo previsto para o fim do mês.
+- **⚡ Lançamento rápido**: no topo do Resumo e de Lançamentos, escreva uma frase e o app entende sozinho
+  (valor, categoria, data, cartão, parcelas, se é conta fixa e se já está pago). Exemplos:
+  `mercado 85,90 nubank` · `uber 23` · `luz 310 dia 20` · `salário 5000 dia 5 todo mês` · `tv 2400 10x nubank` ·
+  `farmácia 42 ontem pix` · `+ venda 150`. Mostra uma prévia antes de salvar e permite desfazer. Dá para ditar pelo microfone do teclado.
 - **Resumo do mês**: saldo em conta, receitas, despesas, resultado, gráfico de despesas por categoria e comparativo dos últimos 6 meses.
 - **Lançamentos**: receitas e despesas com categoria, data, observações e situação (pago / a pagar, recebido / a receber).
   - **Parcelado**: divide uma compra em N parcelas mensais (ex.: 10x).
@@ -96,6 +100,7 @@ Em **Ajustes → Carregar dados de exemplo** você pode ver o app preenchido.
 | `app.js` | Lógica principal do app |
 | `invest.js` | Investimentos, CDI/IPCA e simulador |
 | `cards.js` | Cartões de crédito, faturas e avisos |
+| `quick.js` | Lançamento rápido por frase |
 | `sw.js` | Service worker (funcionamento offline) |
 | `manifest.webmanifest` | Configuração para instalar como app |
 | `icons/` | Ícones do app |
