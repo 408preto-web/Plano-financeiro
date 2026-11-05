@@ -11,6 +11,8 @@ const CARD_COLORS = ['#7c3aed', '#ea580c', '#0f766e', '#2563eb', '#db2777', '#47
 const alertDays = () => state.settings?.alertDays ?? 7; // avisar com N dias de antecedência
 
 const cardById = (id) => state.cards.find((c) => c.id === id);
+/** Nome do cartão com o final, ex.: "Santander •1234". */
+const cardLabel = (c) => (c ? `${c.name}${c.final ? ' •' + c.final : ''}` : '');
 const fmtDate = (iso) => iso.split('-').reverse().join('/');
 
 /** Data ISO para (ano, mês 1-12 podendo passar de 12, dia) com o dia limitado ao fim do mês. */
@@ -119,7 +121,7 @@ function dueText(iso) {
 /* ---------- Componentes usados em outras telas ---------- */
 function alertsBanner() {
   const items = [
-    ...invoiceAlerts().map((i) => ({ date: i.dueISO, icon: '💳', title: `Fatura ${i.card.name}`, amount: i.total, btn: `data-payinv="${invoiceKey(i.card.id, i.dueISO)}"` })),
+    ...invoiceAlerts().map((i) => ({ date: i.dueISO, icon: '💳', title: `Fatura ${cardLabel(i.card)}`, amount: i.total, btn: `data-payinv="${invoiceKey(i.card.id, i.dueISO)}"` })),
     ...billAlerts().map((t) => ({ date: t.date, icon: catById(t.categoryId).icon, title: t.description || catById(t.categoryId).name, amount: t.amount, btn: `data-paybill="${t.id}"` })),
   ].sort((a, b) => a.date.localeCompare(b.date));
   const incomes = incomeAlerts().map((t) => `<div class="alert income">
@@ -167,7 +169,7 @@ function invoiceItem(inv) {
   return `<li class="tx" data-invoice="${invoiceKey(inv.card.id, inv.dueISO)}">
     <div class="tx-icon" style="background:${inv.card.color}22">💳</div>
     <div class="tx-main">
-      <div class="tx-title">Fatura ${esc(inv.card.name)}<span class="badge ${st.key === 'overdue' ? 'danger' : ''}">${st.label}</span></div>
+      <div class="tx-title">Fatura ${esc(cardLabel(inv.card))}<span class="badge ${st.key === 'overdue' ? 'danger' : ''}">${st.label}</span></div>
       <div class="tx-meta">Vence ${shortDate(inv.dueISO)} · ${inv.items.length} compra${inv.items.length === 1 ? '' : 's'}</div>
     </div>
     <div class="tx-amount neg">− ${money(inv.total)}</div>
@@ -177,7 +179,7 @@ function invoiceItem(inv) {
 function cardOptions(selected) {
   if (!state.cards.length) return '<option value="">🏦 Saldo em conta (débito, Pix, dinheiro)</option><option value="" disabled>— cadastre cartões na aba Cartões —</option>';
   return `<option value="">🏦 Saldo em conta (débito, Pix, dinheiro)</option>` +
-    state.cards.map((c) => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>💳 ${esc(c.name)}</option>`).join('');
+    state.cards.map((c) => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>💳 ${esc(cardLabel(c))}</option>`).join('');
 }
 
 /* ---------- Tela ---------- */
@@ -219,7 +221,7 @@ function renderCards() {
       <div class="card-head">
         <div style="display:flex;gap:12px;align-items:center;min-width:0">
           <div class="cc-chip" style="background:${c.color}">💳</div>
-          <div style="min-width:0"><h2 style="margin:0">${esc(c.name)}</h2>
+          <div style="min-width:0"><h2 style="margin:0">${esc(cardLabel(c))}</h2>
             <div class="tx-meta">Fecha dia ${c.closingDay} · vence dia ${c.dueDay}</div></div>
         </div>
         <button class="btn small" data-editcard="${c.id}">Editar</button>
@@ -285,7 +287,9 @@ function openCardForm(card) {
       <label class="field"><span>Dia de fechamento da fatura</span><input type="number" name="closingDay" min="1" max="31" value="${c.closingDay}" required inputmode="numeric"></label>
       <label class="field"><span>Dia de vencimento</span><input type="number" name="dueDay" min="1" max="31" value="${c.dueDay}" required inputmode="numeric"></label>
       <p class="muted full" style="margin:0;font-size:13px">Os dois dias aparecem na fatura ou no app do banco. Compras feitas <b>a partir</b> do dia de fechamento entram na fatura do mês seguinte.</p>
+      <label class="field"><span>Final do cartão (4 últimos dígitos)</span><input name="final" inputmode="numeric" maxlength="4" placeholder="Ex.: 1234" value="${esc(c.final || '')}" autocomplete="off"></label>
       <label class="field"><span>Cor</span><input type="color" name="color" value="${c.color}"></label>
+      <p class="muted full" style="margin:0;font-size:13px">O final ajuda quando você tem mais de um cartão do mesmo banco. No lançamento rápido, escreva por exemplo <b>“almoço 54,40 santander final 1234”</b>.</p>
     </div>
     <div class="modal-actions">
       ${card ? '<button class="btn danger" value="delete" formnovalidate>Excluir</button>' : ''}
@@ -304,8 +308,11 @@ function openCardForm(card) {
       return;
     }
     const day = (v) => Math.max(1, Math.min(31, Number(v) || 1));
-    const data = { name: fd.get('name').trim(), limit: parseMoney(fd.get('limit')), closingDay: day(fd.get('closingDay')), dueDay: day(fd.get('dueDay')), color: fd.get('color') };
+    const final = String(fd.get('final') || '').replace(/\D/g, '');
+    const data = { name: fd.get('name').trim(), final, limit: parseMoney(fd.get('limit')), closingDay: day(fd.get('closingDay')), dueDay: day(fd.get('dueDay')), color: fd.get('color') };
     if (!data.name) { toast('Informe o nome do cartão'); return false; }
+    if (final && final.length !== 4) { toast('O final do cartão deve ter 4 dígitos'); return false; }
+    if (final && state.cards.some((x) => x !== card && x.final === final)) { toast(`Já existe um cartão com final ${final}`); return false; }
     if (card) Object.assign(card, data); else state.cards.push({ id: 'cc-' + uid(), ...data });
     save(); render(); toast(card ? 'Cartão atualizado' : 'Cartão cadastrado');
   });
@@ -315,7 +322,7 @@ function openInvoicePay(key) {
   const inv = findInvoice(key);
   if (!inv) return;
   openModal(`
-    <h2>💳 Pagar fatura ${esc(inv.card.name)}</h2>
+    <h2>💳 Pagar fatura ${esc(cardLabel(inv.card))}</h2>
     <p class="muted" style="margin-top:-6px">Vencimento: <b>${fmtDate(inv.dueISO)}</b> · ${inv.items.length} compra${inv.items.length === 1 ? '' : 's'}</p>
     <div class="stat" style="margin:6px 0 14px"><div class="label">Valor da fatura</div><div class="value neg">${money(inv.total)}</div></div>
     <label class="field"><span>Data do pagamento</span><input type="date" name="date" value="${todayISO()}" required></label>
@@ -340,7 +347,7 @@ function openInvoiceDetails(key) {
       <div class="tx-amount neg">${money(t.amount)}</div></li>`;
   }).join('');
   openModal(`
-    <h2>Fatura ${esc(inv.card.name)}</h2>
+    <h2>Fatura ${esc(cardLabel(inv.card))}</h2>
     <p class="muted" style="margin-top:-6px">Fecha ${fmtDate(inv.closeISO)} · vence ${fmtDate(inv.dueISO)} · <span class="badge ${st.key}">${st.label}</span></p>
     <ul class="tx-list" style="max-height:50vh;overflow:auto">${rows}</ul>
     <div class="budget-top mt"><b>Total</b><b class="neg">${money(inv.total)}</b></div>

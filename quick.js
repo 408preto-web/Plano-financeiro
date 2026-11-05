@@ -27,7 +27,7 @@ const QUICK_KEYWORDS = [
   ['c-aplicacao', 'aplicacao aplicacao investi investimento poupei'],
 ];
 const INCOME_WORDS = /\b(recebi|receita|recebimento|a receber|salario|freela|freelance|reembolso|rendimentos?|dividendos?|vendi|venda|bonus|comissao|resgate|resgatei|holerite|adiantamento)\b/;
-const FILLER_START = /^(gastei|paguei|comprei|recebi|gasto|compra|despesa|receita|de|do|da|no|na|em|com|um|uma|o|a)\s+/i;
+const FILLER_START = /^(pagamento|pagto|gastei|paguei|comprei|recebi|gasto|compra|despesa|receita|de|do|da|no|na|em|com|um|uma|o|a)\s+/i;
 const FILLER_END = /\s+(de|do|da|no|na|em|com|e|o|a)$/i;
 
 const normChar = (c) => (c.normalize('NFD')[0] || c).toLowerCase();
@@ -75,16 +75,49 @@ function parseQuick(text) {
   else if (take(/\bamanha\b/)) r.date = addDaysISO(today, 1);
   else take(/\bhoje\b/);
 
-  // Cartão pelo nome ("nubank", "itau"…), ou genérico ("no cartão", "crédito")
-  const cards = [...state.cards].sort((a, b) => b.name.length - a.name.length);
-  for (const c of cards) {
-    const name = c.name.split('').map(normChar).join('');
-    if (take(new RegExp(`\\b(?:no\\s+|cartao\\s+)?${escapeRe(name)}\\b`))) { r.cardId = c.id; break; }
+  // Final do cartão: "final 1234", "terminado em 1234", "*1234", "•1234"
+  let finalDigits = null;
+  const fin = take(/(?:\b(?:com\s+)?(?:final|fim|terminad[oa]\s+em|terminacao)\s*|[*•]\s*)(\d{4})\b/);
+  if (fin) finalDigits = fin[1];
+
+  // Cartão pelo nome ("nubank", "santander"…), ou genérico ("no cartão", "crédito")
+  const normName = (c) => c.name.split('').map(normChar).join('').trim();
+  const names = [...new Set(state.cards.map(normName))].sort((a, b) => b.length - a.length);
+  let candidates = null;
+  for (const name of names) {
+    const m = take(new RegExp(`\\b(?:(?:no|pelo|do|via)\\s+)?(?:cartao\\s+(?:de\\s+credito\\s+)?)?${escapeRe(name)}\\b`));
+    if (!m) continue;
+    candidates = state.cards.filter((c) => normName(c) === name);
+    // "santander 1234": 4 dígitos logo depois do nome que batem com o final de um desses cartões
+    const after = norm.slice(m.index + m[0].length).match(/^\s+(\d{4})\b/);
+    if (!finalDigits && after && candidates.some((c) => c.final === after[1])) {
+      finalDigits = after[1];
+      for (let i = m.index + m[0].length; i < m.index + m[0].length + after[0].length; i++) mask[i] = true;
+    }
+    break;
   }
-  if (!r.cardId && take(/\b(?:no\s+|pelo\s+)?(?:cartao(?:\s+de\s+credito)?|credito)\b/)) {
+  const generic = take(/\b(?:(?:no|pelo|do|via)\s+)?(?:cartao(?:\s+de\s+credito)?|credito)\b/);
+  if (!candidates && (generic || finalDigits)) candidates = finalDigits ? state.cards : null;
+  if (candidates) {
+    let pick = candidates;
+    if (finalDigits) {
+      pick = candidates.filter((c) => c.final === finalDigits);
+      if (!pick.length) {
+        r.warnings.push(`Nenhum cartão${candidates.length < state.cards.length ? ' ' + candidates[0].name : ''} com final ${finalDigits}. Confira o final em Cartões → Editar.`);
+        pick = candidates;
+      }
+    } else if (candidates.length > 1) {
+      const finals = candidates.map((c) => c.final).filter(Boolean);
+      r.warnings.push(finals.length
+        ? `Há ${candidates.length} cartões ${candidates[0].name}: escreva o final (ex.: “final ${finals[0]}”). Usei ${cardLabel(candidates[0])}.`
+        : `Há ${candidates.length} cartões ${candidates[0].name}: cadastre o final de cada um em Cartões → Editar. Usei o primeiro.`);
+    }
+    if (pick.length) r.cardId = pick[0].id;
+  }
+  if (!r.cardId && generic) {
     if (state.cards.length) {
       r.cardId = state.cards[0].id;
-      if (state.cards.length > 1) r.warnings.push(`Usei o cartão ${state.cards[0].name}; escreva o nome do cartão para escolher outro.`);
+      if (state.cards.length > 1) r.warnings.push(`Usei o cartão ${cardLabel(state.cards[0])}; escreva o nome ou o final do cartão para escolher outro.`);
     } else r.warnings.push('Você ainda não cadastrou cartões (aba Cartões); lancei como saldo em conta.');
   }
   take(/\b(?:no\s+|pelo\s+|via\s+|em\s+)?(?:debito|pix|dinheiro|especie|boleto pago)\b/); // saldo em conta (padrão)
@@ -165,7 +198,7 @@ function quickPreviewHtml(text) {
     `<span class="chip"><b>${money(r.amount)}</b>${r.repeat === 'installments' ? ` em ${r.count}x de ${money(Math.floor(r.amount / r.count))}` : ''}</span>`,
     `<span class="chip">${c.icon} ${esc(c.name)}</span>`,
     `<span class="chip">📅 ${when}</span>`,
-    card ? `<span class="chip">💳 ${esc(card.name)} · fatura ${shortDate(invoiceFor(card, r.date).dueISO)}</span>`
+    card ? `<span class="chip">💳 ${esc(cardLabel(card))} · fatura ${shortDate(invoiceFor(card, r.date).dueISO)}</span>`
       : r.type === 'expense' ? '<span class="chip">🏦 saldo em conta</span>' : '',
     r.repeat === 'monthly' ? `<span class="chip">🔁 todo mês · ${r.count} meses</span>` : '',
     card ? '' : `<span class="chip">${r.paid ? (r.type === 'income' ? '✅ recebido' : '✅ pago') : (r.type === 'income' ? '⏳ a receber' : '⏳ a pagar')}</span>`,
@@ -225,6 +258,7 @@ function openQuickHelp() {
     <table class="help-table">
       ${ex('mercado 85,90', 'Despesa de hoje, categoria Mercado, paga pelo saldo')}
       ${ex('mercado 85,90 nubank', 'Mesma coisa, mas no cartão Nubank (vai para a fatura)')}
+      ${ex('almoço 54,40 santander final 1234', 'Vários cartões do mesmo banco: o final escolhe o cartão (também vale “santander 1234” ou “cartão final 1234”)')}
       ${ex('tv 2400 10x nubank', 'Compra parcelada em 10 vezes no cartão (valor total)')}
       ${ex('luz 310 dia 20', 'Conta a pagar com vencimento no dia 20')}
       ${ex('aluguel 1800 dia 10 todo mês', 'Conta fixa: cria os próximos 12 meses')}

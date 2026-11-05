@@ -211,7 +211,7 @@ function txItem(t, { showDate = true } = {}) {
   const sign = t.type === 'income' ? '+' : '−';
   const cls = t.type === 'income' ? 'pos' : 'neg';
   const card = t.cardId && cardById(t.cardId);
-  const pending = card ? `<span class="badge cc" style="--cc:${card.color}">💳 ${esc(card.name)}</span>`
+  const pending = card ? `<span class="badge cc" style="--cc:${card.color}">💳 ${esc(cardLabel(card))}</span>`
     : !t.paid ? (t.type === 'income' ? '<span class="badge paid">a receber</span>' : '<span class="badge">a pagar</span>') : '';
   const inst = t.installment ? ` · ${t.installment}` : '';
   return `<li class="tx" data-tx="${t.id}">
@@ -928,7 +928,7 @@ function exportCsv() {
       t.description,
       ((t.type === 'income' ? 1 : -1) * t.amount / 100).toFixed(2).replace('.', ','),
       t.paid ? 'Efetivado' : 'Pendente',
-      t.cardId ? 'Cartão ' + (cardById(t.cardId)?.name || '') : 'Conta',
+      t.cardId ? 'Cartão ' + cardLabel(cardById(t.cardId)) : 'Conta',
       t.installment || '',
       t.notes || '',
     ]);
