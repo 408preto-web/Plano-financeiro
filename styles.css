@@ -311,3 +311,5 @@ dialog::backdrop { background: rgba(10, 15, 20, .45); backdrop-filter: blur(3px)
   .nav-item { min-width: 0; padding: 6px 1px; font-size: 10px; }
   .nav-item > span:not(.ni):not(.nav-badge) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+.alert.income { background: color-mix(in srgb, var(--income) 12%, var(--surface)); border-color: color-mix(in srgb, var(--income) 45%, transparent); }

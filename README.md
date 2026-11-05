@@ -24,6 +24,10 @@ Funciona **offline**, abre em tela cheia como um app nativo e **seus dados ficam
   - **Todo mês (conta fixa)** cria as contas dos próximos meses já como "a pagar".
   - **🔁 Replicar nos próximos meses** copia uma conta já lançada para os meses seguintes, sem duplicar.
   - Ao editar uma conta repetida, dá para **aplicar o novo valor aos próximos meses**.
+- **Receitas futuras** (salário, aluguel recebido…): lance como Receita com a data prevista e "Todo mês".
+  - Ficam como **a receber** e entram no saldo **previsto**.
+  - No dia, aparece o aviso verde "Salário previsto para hoje" com o botão **Recebi**, onde você confirma
+    (e pode ajustar) o valor que caiu; só então entra no saldo em conta.
 - **Contas pendentes**: lista do que ainda falta pagar ou receber no mês.
 - **Orçamentos**: limite mensal por categoria com barra de progresso (amarelo a 80%, vermelho quando estoura).
 - **Metas**: reserva de emergência, viagem etc., com quanto guardar por mês para chegar no prazo.

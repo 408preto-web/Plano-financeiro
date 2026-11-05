@@ -87,6 +87,17 @@ function billAlerts() {
   return state.transactions.filter((t) => t.type === 'expense' && !t.cardId && !t.paid && t.date <= limit)
     .sort((a, b) => a.date.localeCompare(b.date));
 }
+/** Receitas previstas (ex.: salário) cuja data chegou e ainda não foram confirmadas. */
+function incomeAlerts() {
+  const today = todayISO();
+  return state.transactions.filter((t) => t.type === 'income' && !t.paid && t.date <= today)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+function expectedText(iso) {
+  const n = daysUntil(iso);
+  if (n === 0) return 'previsto para hoje';
+  return `previsto para ${fmtDate(iso)} (há ${-n} dia${n === -1 ? '' : 's'}) — já caiu?`;
+}
 function addDaysISO(iso, n) {
   const [y, m, d] = iso.split('-').map(Number);
   const x = new Date(y, m - 1, d + n);
@@ -111,8 +122,13 @@ function alertsBanner() {
     ...invoiceAlerts().map((i) => ({ date: i.dueISO, icon: '💳', title: `Fatura ${i.card.name}`, amount: i.total, btn: `data-payinv="${invoiceKey(i.card.id, i.dueISO)}"` })),
     ...billAlerts().map((t) => ({ date: t.date, icon: catById(t.categoryId).icon, title: t.description || catById(t.categoryId).name, amount: t.amount, btn: `data-paybill="${t.id}"` })),
   ].sort((a, b) => a.date.localeCompare(b.date));
-  if (!items.length) return '';
-  return `<div class="alerts">${items.map((a) => {
+  const incomes = incomeAlerts().map((t) => `<div class="alert income">
+      <span class="alert-icon">${catById(t.categoryId).icon}</span>
+      <div class="alert-text"><b>${esc(t.description || catById(t.categoryId).name)}</b> ${expectedText(t.date)}: <b class="pos">${money(t.amount)}</b></div>
+      <button class="btn small primary" data-receive="${t.id}">Recebi</button>
+    </div>`).join('');
+  if (!items.length && !incomes) return '';
+  return `<div class="alerts">${incomes}${items.map((a) => {
     const overdue = daysUntil(a.date) < 0;
     return `<div class="alert ${overdue ? 'danger' : ''}">
       <span class="alert-icon">${overdue ? '🚨' : a.icon}</span>
@@ -122,25 +138,26 @@ function alertsBanner() {
   }).join('')}</div>`;
 }
 
-/** Confirmar pagamento de uma conta: permite ajustar o valor real e a data. */
+/** Confirmar pagamento (despesa) ou recebimento (receita): permite ajustar o valor real e a data. */
 function openBillPay(tx) {
+  const inc = tx.type === 'income';
   openModal(`
-    <h2>✅ Pagar conta</h2>
-    <p class="muted" style="margin-top:-6px"><b>${esc(tx.description || catById(tx.categoryId).name)}</b> · vencimento ${fmtDate(tx.date)}</p>
+    <h2>${inc ? '💰 Confirmar recebimento' : '✅ Pagar conta'}</h2>
+    <p class="muted" style="margin-top:-6px"><b>${esc(tx.description || catById(tx.categoryId).name)}</b> · ${inc ? 'previsto para' : 'vencimento'} ${fmtDate(tx.date)}</p>
     <div class="form-grid">
-      <label class="field"><span>Valor pago (R$)</span><input class="amount-input" name="amount" inputmode="decimal" value="${centsToInput(tx.amount)}" required autocomplete="off"></label>
-      <label class="field"><span>Data do pagamento</span><input type="date" name="date" value="${todayISO()}" required></label>
+      <label class="field"><span>${inc ? 'Valor recebido' : 'Valor pago'} (R$)</span><input class="amount-input" name="amount" inputmode="decimal" value="${centsToInput(tx.amount)}" required autocomplete="off"></label>
+      <label class="field"><span>${inc ? 'Data do recebimento' : 'Data do pagamento'}</span><input type="date" name="date" value="${todayISO()}" required></label>
     </div>
-    <p class="muted" style="font-size:13px">O valor sai do seu <b>saldo em conta</b>.</p>
-    <div class="modal-actions"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="save">Confirmar pagamento</button></div>`,
+    <p class="muted" style="font-size:13px">${inc ? 'O valor entra no seu <b>saldo em conta</b>. Se o valor mudou (ex.: aumento, horas extras), corrija acima.' : 'O valor sai do seu <b>saldo em conta</b>.'}</p>
+    <div class="modal-actions"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="save">${inc ? 'Confirmar recebimento' : 'Confirmar pagamento'}</button></div>`,
   (action, fd) => {
     const amount = parseMoney(fd.get('amount'));
-    if (amount <= 0) { toast('Informe o valor pago'); return false; }
+    if (amount <= 0) { toast(inc ? 'Informe o valor recebido' : 'Informe o valor pago'); return false; }
     tx.amount = amount;
     tx.paid = true;
     const date = fd.get('date');
     if (date !== tx.date) tx.paidDate = date; else delete tx.paidDate;
-    save(); render(); toast('Conta paga ✅');
+    save(); render(); toast(inc ? 'Recebimento confirmado 💰' : 'Conta paga ✅');
   }, () => setTimeout(() => { const el = $('[name="amount"]', modalForm); el.focus(); el.select(); }, 50));
 }
 
@@ -233,9 +250,9 @@ function renderCards() {
 /** Liga os botões de faturas/cartões presentes em qualquer tela. */
 function bindCardActions(v) {
   $$('[data-payinv]', v).forEach((el) => el.addEventListener('click', (e) => { e.stopPropagation(); openInvoicePay(el.dataset.payinv); }));
-  $$('[data-paybill]', v).forEach((el) => el.addEventListener('click', (e) => {
+  $$('[data-paybill], [data-receive]', v).forEach((el) => el.addEventListener('click', (e) => {
     e.stopPropagation();
-    const t = state.transactions.find((x) => x.id === el.dataset.paybill);
+    const t = state.transactions.find((x) => x.id === (el.dataset.paybill || el.dataset.receive));
     if (t) openBillPay(t);
   }));
   $$('[data-unpayinv]', v).forEach((el) => el.addEventListener('click', () => {
@@ -345,7 +362,7 @@ function openInvoiceDetails(key) {
 /** Atualiza o número de avisos no menu e no ícone do app (quando o iPadOS permitir). */
 function updateCardBadges() {
   const nInv = invoiceAlerts().length;
-  const nBill = billAlerts().length;
+  const nBill = billAlerts().length + incomeAlerts().length;
   const set = (view, n) => { const el = $(`.nav-item[data-view="${view}"] .nav-badge`); if (el) { el.textContent = n; el.hidden = !n; } };
   set('cards', nInv);
   set('dashboard', nBill + nInv);

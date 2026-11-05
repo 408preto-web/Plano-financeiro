@@ -208,7 +208,7 @@ function txItem(t, { showDate = true } = {}) {
   const cls = t.type === 'income' ? 'pos' : 'neg';
   const card = t.cardId && cardById(t.cardId);
   const pending = card ? `<span class="badge cc" style="--cc:${card.color}">💳 ${esc(card.name)}</span>`
-    : !t.paid ? `<span class="badge">${t.type === 'income' ? 'a receber' : 'a pagar'}</span>` : '';
+    : !t.paid ? (t.type === 'income' ? '<span class="badge paid">a receber</span>' : '<span class="badge">a pagar</span>') : '';
   const inst = t.installment ? ` · ${t.installment}` : '';
   return `<li class="tx" data-tx="${t.id}">
     <div class="tx-icon" style="background:${c.color}22">${c.icon}</div>
@@ -323,7 +323,7 @@ function renderDashboard() {
 
   <div class="grid cols-2 mt">
     <div class="card">
-      <div class="card-head"><h2>Contas pendentes</h2><span class="muted">${pendingHtml.length}</span></div>
+      <div class="card-head"><h2>A pagar e a receber</h2><span class="muted">${pendingHtml.length}</span></div>
       ${pendingHtml.length ? `<ul class="tx-list">${pendingHtml.slice(0, 10).join('')}</ul>` : '<div class="empty">Nenhuma pendência 🎉</div>'}
     </div>
     <div class="card">
@@ -608,8 +608,7 @@ function openTxForm(tx, defaults = {}) {
         </select></label>
       <label class="field" id="repeatCountWrap" style="visibility:hidden"><span>Quantidade de meses</span>
         <input type="number" name="count" min="2" max="120" value="12" inputmode="numeric"></label>
-      <small class="muted full" id="repeatHint" style="display:none;margin-top:-6px">Os próximos meses ficam salvos como contas <b>a pagar</b>, com o mesmo valor e dia de vencimento.
-        Quando a conta chegar, é só abrir e ajustar o valor.</small>`}
+      <small class="muted full" id="repeatHint" style="display:none;margin-top:-6px"></small>`}
       ${isEdit && t.groupId && !t.installment ? `<label class="check full"><input type="checkbox" name="applyFuture"><span>Aplicar valor, descrição e categoria também aos <b>próximos meses</b> desta conta</span></label>` : ''}
       <label class="field full"><span>Observações</span><textarea name="notes" rows="2">${esc(t.notes)}</textarea></label>
     </div>
@@ -693,6 +692,10 @@ function openTxForm(tx, defaults = {}) {
       const date = $('[name="date"]', modalForm).value;
       const paid = $('[name="paid"]', modalForm).checked;
       $('#dateLabel').textContent = card || paid ? 'Data' : type === 'expense' ? 'Vencimento' : 'Data prevista';
+      const hint = $('#repeatHint');
+      if (hint) hint.innerHTML = type === 'income'
+        ? 'Os próximos meses ficam salvos como receitas <b>a receber</b>, no mesmo dia e valor. No dia, o app pergunta se o valor caiu e você confirma (podendo ajustar o valor).'
+        : 'Os próximos meses ficam salvos como contas <b>a pagar</b>, com o mesmo valor e dia de vencimento. Quando a conta chegar, é só abrir e ajustar o valor.';
       $('#cardHint').innerHTML = card && date
         ? `Não sai do saldo agora: entra na fatura que vence em <b>${fmtDate(invoiceFor(card, date).dueISO)}</b>.`
         : type === 'expense' ? 'Sai do saldo em conta quando marcado como pago.' : '';
@@ -713,6 +716,7 @@ function openTxForm(tx, defaults = {}) {
     $('#txRepeat')?.addEventListener('change', (e) => {
       $('#repeatCountWrap').style.visibility = e.target.value === 'once' ? 'hidden' : 'visible';
       $('#repeatHint').style.display = e.target.value === 'monthly' ? '' : 'none';
+      syncPay();
     });
   });
 }
