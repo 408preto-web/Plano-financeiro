@@ -12,6 +12,12 @@ Funciona **offline**, abre em tela cheia como um app nativo e **seus dados ficam
   - **Parcelado**: divide uma compra em N parcelas mensais (ex.: 10x).
   - **Fixo mensal**: repete o mesmo valor por N meses (aluguel, assinaturas, salário).
   - Busca e filtros por tipo, categoria e situação.
+- **Cartões de crédito**: cadastre cada cartão com limite, dia de fechamento e vencimento.
+  - No lançamento, escolha a **forma de pagamento**: saldo em conta (débito/Pix/dinheiro) ou um cartão.
+  - Compras no cartão **não saem do saldo** na hora: vão para a fatura certa (conforme o fechamento) e só
+    saem do saldo quando você toca em **Pagar fatura**.
+  - Limite usado/disponível (inclui parcelas futuras) e lista de faturas (aberta, fechada, vencida, paga).
+  - **Aviso no Resumo** e número no menu quando uma fatura vence nos próximos 10 dias ou está vencida.
 - **Contas pendentes**: lista do que ainda falta pagar ou receber no mês.
 - **Orçamentos**: limite mensal por categoria com barra de progresso (amarelo a 80%, vermelho quando estoura).
 - **Metas**: reserva de emergência, viagem etc., com quanto guardar por mês para chegar no prazo.
@@ -27,7 +33,7 @@ Funciona **offline**, abre em tela cheia como um app nativo e **seus dados ficam
 - **Categorias** personalizáveis (nome, emoji, cor).
 - **Backup**: exporta/restaura um arquivo `.json` (salve no iCloud Drive) e exporta planilha `.csv` (abre no Numbers/Excel).
 - Modo escuro automático e atalhos de teclado para o Magic Keyboard:
-  `N` novo lançamento · `←`/`→` muda o mês · `1`–`6` troca de tela.
+  `N` novo lançamento · `←`/`→` muda o mês · `1`–`7` troca de tela.
 
 ## Como colocar no seu iPad
 
@@ -79,6 +85,7 @@ Em **Ajustes → Carregar dados de exemplo** você pode ver o app preenchido.
 | `styles.css` | Visual (adaptado para iPad, retrato/paisagem e Split View) |
 | `app.js` | Lógica principal do app |
 | `invest.js` | Investimentos, CDI/IPCA e simulador |
+| `cards.js` | Cartões de crédito, faturas e avisos |
 | `sw.js` | Service worker (funcionamento offline) |
 | `manifest.webmanifest` | Configuração para instalar como app |
 | `icons/` | Ícones do app |

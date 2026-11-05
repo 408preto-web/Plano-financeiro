@@ -95,6 +95,8 @@ function defaultState() {
     market: defaultMarket(),
     openingBalance: 0,     // ajustado em “Saldo em conta” (centavos)
     balanceSetAt: null,
+    cards: [],             // cartões de crédito
+    invoicePayments: {},   // "cartão|vencimento" -> { date } das faturas pagas
   };
 }
 
@@ -114,6 +116,8 @@ function migrate(data) {
   const s = { ...defaultState(), ...data };
   s.market = { ...defaultMarket(), ...(data.market || {}) };
   if (!Array.isArray(s.market.cdi) || !s.market.cdi.length) s.market.cdi = defaultMarket().cdi;
+  if (!Array.isArray(s.cards)) s.cards = [];
+  if (!s.invoicePayments || typeof s.invoicePayments !== 'object') s.invoicePayments = {};
   for (const id of ['c-aplicacao', 'c-resgate']) {
     if (!s.categories.some((c) => c.id === id)) s.categories.push({ ...DEFAULT_CATEGORIES.find((c) => c.id === id) });
   }
@@ -139,24 +143,27 @@ const catById = (id) => state.categories.find((c) => c.id === id) || { name: 'Se
 const txOfMonth = (ym) => state.transactions.filter((t) => monthOf(t.date) === ym);
 
 function totals(list) {
-  let income = 0, expense = 0, pendingExpense = 0, pendingIncome = 0;
+  let income = 0, expense = 0, pendingExpense = 0, pendingIncome = 0, card = 0;
   for (const t of list) {
     if (t.type === 'income') { income += t.amount; if (!t.paid) pendingIncome += t.amount; }
+    else if (t.cardId) { expense += t.amount; card += t.amount; }
     else { expense += t.amount; if (!t.paid) pendingExpense += t.amount; }
   }
-  return { income, expense, balance: income - expense, pendingExpense, pendingIncome };
+  return { income, expense, balance: income - expense, pendingExpense, pendingIncome, card };
 }
 
 /**
  * Saldo em conta: saldo inicial + lançamentos até a data informada (inclusive).
  * Por padrão conta só o que já foi pago/recebido; com includePending conta também o previsto.
+ * Compras no cartão não entram aqui: o que sai do saldo é o pagamento da fatura.
  */
 function accountBalance(untilISO, includePending = false) {
   let b = state.openingBalance || 0;
   for (const t of state.transactions) {
+    if (t.cardId) continue;
     if (t.date <= untilISO && (t.paid || includePending)) b += t.type === 'income' ? t.amount : -t.amount;
   }
-  return b;
+  return b - invoicesBalanceEffect(untilISO, includePending);
 }
 const endOfMonth = (ym) => { const [y, m] = ym.split('-').map(Number); return `${ym}-${pad(new Date(y, m, 0).getDate())}`; };
 
@@ -181,13 +188,14 @@ function setView(v) {
 function render() {
   const ml = monthName(ui.month);
   const showMonth = ['dashboard', 'transactions', 'budgets'].includes(ui.view);
-  const titles = { goals: 'Metas', investments: 'Investimentos', settings: 'Ajustes' };
+  const titles = { cards: 'Cartões de crédito', goals: 'Metas', investments: 'Investimentos', settings: 'Ajustes' };
   $('#monthLabel').textContent = showMonth ? ml.charAt(0).toUpperCase() + ml.slice(1) : titles[ui.view];
   $('#monthLabel').style.textAlign = showMonth ? '' : 'left';
   $$('#prevMonth, #nextMonth').forEach((el) => { el.style.display = showMonth ? '' : 'none'; });
-  const views = { dashboard: renderDashboard, transactions: renderTransactions, budgets: renderBudgets, goals: renderGoals, investments: renderInvestments, settings: renderSettings };
+  const views = { dashboard: renderDashboard, transactions: renderTransactions, cards: renderCards, budgets: renderBudgets, goals: renderGoals, investments: renderInvestments, settings: renderSettings };
   $('#view').innerHTML = views[ui.view]();
   bindView();
+  updateCardBadges();
 }
 
 /* ---------- Componentes ---------- */
@@ -195,7 +203,9 @@ function txItem(t, { showDate = true } = {}) {
   const c = catById(t.categoryId);
   const sign = t.type === 'income' ? '+' : '−';
   const cls = t.type === 'income' ? 'pos' : 'neg';
-  const pending = !t.paid ? `<span class="badge">${t.type === 'income' ? 'a receber' : 'a pagar'}</span>` : '';
+  const card = t.cardId && cardById(t.cardId);
+  const pending = card ? `<span class="badge cc" style="--cc:${card.color}">💳 ${esc(card.name)}</span>`
+    : !t.paid ? `<span class="badge">${t.type === 'income' ? 'a receber' : 'a pagar'}</span>` : '';
   const inst = t.installment ? ` · ${t.installment}` : '';
   return `<li class="tx" data-tx="${t.id}">
     <div class="tx-icon" style="background:${c.color}22">${c.icon}</div>
@@ -279,10 +289,14 @@ function renderDashboard() {
     months.push({ label: monthName(ym, { month: 'short' }).replace('.', ''), income: tt.income, expense: tt.expense, current: i === 0 });
   }
 
-  const pending = list.filter((x) => !x.paid).sort((a, b) => a.date.localeCompare(b.date));
+  const pending = list.filter((x) => !x.paid && !x.cardId).sort((a, b) => a.date.localeCompare(b.date));
+  const monthInvoices = allInvoices().filter((i) => !i.paid && monthOf(i.dueISO) === ui.month);
+  const pendingHtml = [...monthInvoices.map((i) => ({ date: i.dueISO, html: invoiceItem(i) })), ...pending.map((x) => ({ date: x.date, html: txItem(x) }))]
+    .sort((a, b) => a.date.localeCompare(b.date)).map((x) => x.html);
   const recent = [...list].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt).slice(0, 8);
 
   return `
+  ${alertsBanner()}
   <div class="grid cols-4">
     <button class="card stat balance-card" id="balanceCard" aria-label="Ajustar saldo em conta">
       <div class="label">${isPast ? `Saldo em conta (fim de ${shortMonth})` : isCurrent ? 'Saldo em conta hoje' : `Saldo previsto (fim de ${shortMonth})`} <span class="edit-hint">✎</span></div>
@@ -294,7 +308,7 @@ function renderDashboard() {
     <div class="card stat"><div class="label">Receitas</div><div class="value pos">${money(t.income)}</div>
       <div class="sub">${t.pendingIncome ? money(t.pendingIncome) + ' a receber' : 'tudo recebido'}</div></div>
     <div class="card stat"><div class="label">Despesas</div><div class="value neg">${money(t.expense)}</div>
-      <div class="sub">${t.pendingExpense ? money(t.pendingExpense) + ' a pagar' : 'tudo pago'}</div></div>
+      <div class="sub">${t.pendingExpense ? money(t.pendingExpense) + ' a pagar' : 'tudo pago'}${t.card ? `<br>💳 ${money(t.card)} no cartão` : ''}</div></div>
     <div class="card stat"><div class="label">Resultado do mês</div><div class="value ${t.balance >= 0 ? 'pos' : 'neg'}">${money(t.balance)}</div>
       <div class="sub">${t.income ? Math.round((t.balance / t.income) * 100) + '% da renda' : '—'}</div></div>
   </div>
@@ -306,8 +320,8 @@ function renderDashboard() {
 
   <div class="grid cols-2 mt">
     <div class="card">
-      <div class="card-head"><h2>Contas pendentes</h2><span class="muted">${pending.length}</span></div>
-      ${pending.length ? `<ul class="tx-list">${pending.slice(0, 8).map((x) => txItem(x)).join('')}</ul>` : '<div class="empty">Nenhuma pendência 🎉</div>'}
+      <div class="card-head"><h2>Contas pendentes</h2><span class="muted">${pendingHtml.length}</span></div>
+      ${pendingHtml.length ? `<ul class="tx-list">${pendingHtml.slice(0, 10).join('')}</ul>` : '<div class="empty">Nenhuma pendência 🎉</div>'}
     </div>
     <div class="card">
       <div class="card-head"><h2>Lançamentos recentes</h2><button class="btn small" data-go="transactions">Ver todos</button></div>
@@ -488,6 +502,7 @@ function bindView() {
   $$('[data-tx]', v).forEach((el) => el.addEventListener('click', () => openTxForm(state.transactions.find((t) => t.id === el.dataset.tx))));
   $$('[data-go]', v).forEach((el) => el.addEventListener('click', () => setView(el.dataset.go)));
   $('#balanceCard', v)?.addEventListener('click', openBalanceForm);
+  bindCardActions(v);
 
   if (ui.view === 'transactions') {
     const fq = $('#fq');
@@ -551,9 +566,9 @@ function catOptions(type, selected) {
     .map((c) => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${c.icon} ${esc(c.name)}</option>`).join('');
 }
 
-function openTxForm(tx) {
+function openTxForm(tx, defaults = {}) {
   const isEdit = !!tx;
-  const t = tx || { type: 'expense', amount: 0, date: monthOf(todayISO()) === ui.month ? todayISO() : `${ui.month}-01`, categoryId: '', description: '', paid: true, notes: '' };
+  const t = tx || { type: 'expense', amount: 0, date: monthOf(todayISO()) === ui.month ? todayISO() : `${ui.month}-01`, categoryId: '', description: '', paid: true, notes: '', cardId: '', ...defaults };
   const html = `
     <h2>${isEdit ? 'Editar lançamento' : 'Novo lançamento'}</h2>
     <div class="seg" style="margin-bottom:14px">
@@ -567,7 +582,10 @@ function openTxForm(tx) {
         <input name="description" value="${esc(t.description)}" placeholder="Ex.: Aluguel, Mercado, Salário…" autocomplete="off"></label>
       <label class="field"><span>Categoria</span><select name="categoryId" id="txCat">${catOptions(t.type, t.categoryId)}</select></label>
       <label class="field"><span>Data</span><input type="date" name="date" value="${t.date}" required></label>
-      <label class="check full"><input type="checkbox" name="paid" ${t.paid ? 'checked' : ''}><span id="paidLabel">${t.type === 'income' ? 'Já recebido' : 'Já pago'}</span></label>
+      <label class="field full" id="payWithWrap"><span>Forma de pagamento</span>
+        <select name="cardId" id="txCard">${cardOptions(t.cardId)}</select>
+        <small class="muted" id="cardHint" style="display:block;margin-top:6px"></small></label>
+      <label class="check full" id="paidWrap"><input type="checkbox" name="paid" ${t.paid ? 'checked' : ''}><span id="paidLabel">${t.type === 'income' ? 'Já recebido' : 'Já pago'}</span></label>
       ${isEdit ? '' : `
       <label class="field"><span>Repetir</span>
         <select name="repeat" id="txRepeat">
@@ -610,7 +628,10 @@ function openTxForm(tx) {
       date: fd.get('date'),
       paid: fd.get('paid') === 'on',
       notes: fd.get('notes').trim(),
+      cardId: fd.get('type') === 'expense' ? fd.get('cardId') || '' : '',
     };
+    // Compra no cartão: o lançamento está "efetivado"; o que fica pendente é a fatura.
+    if (data.cardId) data.paid = true;
     if (isEdit) {
       Object.assign(tx, data);
     } else {
@@ -628,7 +649,7 @@ function openTxForm(tx) {
             id: uid(), createdAt: Date.now() + i, groupId,
             amount: per + (i === 0 ? remainder : 0),
             date: addMonthsToDate(data.date, i),
-            paid: i === 0 ? data.paid : false,
+            paid: data.cardId ? true : i === 0 ? data.paid : false,
             installment: repeat === 'installments' ? `${i + 1}/${count}` : '',
           });
         }
@@ -638,10 +659,24 @@ function openTxForm(tx) {
   }, () => {
     const amountEl = $('[name="amount"]', modalForm);
     if (!isEdit) setTimeout(() => amountEl.focus(), 50);
+    const syncPay = () => {
+      const type = $('[name="type"]:checked', modalForm).value;
+      const card = type === 'expense' && cardById($('#txCard').value);
+      $('#payWithWrap').style.display = type === 'expense' ? '' : 'none';
+      $('#paidWrap').style.display = card ? 'none' : '';
+      const date = $('[name="date"]', modalForm).value;
+      $('#cardHint').innerHTML = card && date
+        ? `Não sai do saldo agora: entra na fatura que vence em <b>${fmtDate(invoiceFor(card, date).dueISO)}</b>.`
+        : type === 'expense' ? 'Sai do saldo em conta quando marcado como pago.' : '';
+    };
     $$('[name="type"]', modalForm).forEach((r) => r.addEventListener('change', () => {
       $('#txCat').innerHTML = catOptions(r.value, '');
       $('#paidLabel').textContent = r.value === 'income' ? 'Já recebido' : 'Já pago';
+      syncPay();
     }));
+    $('#txCard').addEventListener('change', syncPay);
+    $('[name="date"]', modalForm).addEventListener('change', syncPay);
+    syncPay();
     $('#txRepeat')?.addEventListener('change', (e) => {
       $('#repeatCountWrap').style.visibility = e.target.value === 'once' ? 'hidden' : 'visible';
     });
@@ -797,7 +832,7 @@ function importJson(e) {
 }
 
 function exportCsv() {
-  const rows = [['Data', 'Tipo', 'Categoria', 'Descrição', 'Valor', 'Situação', 'Parcela', 'Observações']];
+  const rows = [['Data', 'Tipo', 'Categoria', 'Descrição', 'Valor', 'Situação', 'Pagamento', 'Parcela', 'Observações']];
   [...state.transactions].sort((a, b) => a.date.localeCompare(b.date)).forEach((t) => {
     rows.push([
       t.date.split('-').reverse().join('/'),
@@ -806,6 +841,7 @@ function exportCsv() {
       t.description,
       ((t.type === 'income' ? 1 : -1) * t.amount / 100).toFixed(2).replace('.', ','),
       t.paid ? 'Efetivado' : 'Pendente',
+      t.cardId ? 'Cartão ' + (cardById(t.cardId)?.name || '') : 'Conta',
       t.installment || '',
       t.notes || '',
     ]);
@@ -837,6 +873,16 @@ function loadDemo() {
     add(ym, 3, 'expense', 'c-assinaturas', 'Streaming e apps', 89.9);
     add(ym, 25, 'expense', 'c-lazer', 'Cinema e passeios', 300 * r(), !cur);
     if (i % 3 === 0) add(ym, 16, 'expense', 'c-saude', 'Farmácia', 140 * r());
+  }
+  if (!state.cards.length) {
+    const card = { id: 'cc-' + uid(), name: 'Nubank', limit: 500000, closingDay: 8, dueDay: 15, color: '#7c3aed' };
+    state.cards.push(card);
+    // Restaurantes e assinaturas dos exemplos passam a ser no cartão; mais uma compra parcelada.
+    state.transactions.forEach((t) => { if (['Restaurantes', 'Streaming e apps'].includes(t.description)) { t.cardId = card.id; t.paid = true; } });
+    const g = uid();
+    for (let i = 0; i < 6; i++) state.transactions.push({ id: uid(), createdAt: Date.now() + i, groupId: g, type: 'expense', categoryId: 'c-outros',
+      description: 'Celular novo', amount: 30000, date: addMonthsToDate(`${addMonths(base, -2)}-20`, i), paid: true, notes: '', cardId: card.id, installment: `${i + 1}/6` });
+    for (const inv of invoicesOf(card)) if (inv.dueISO < todayISO()) state.invoicePayments[invoiceKey(card.id, inv.dueISO)] = { date: inv.dueISO };
   }
   state.budgets = { ...state.budgets, 'c-mercado': 130000, 'c-alimentacao': 40000, 'c-lazer': 35000, 'c-transporte': 50000 };
   if (!state.investments.length) {
@@ -873,7 +919,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openTxForm(); }
   if (e.key === 'ArrowLeft') { ui.month = addMonths(ui.month, -1); render(); }
   if (e.key === 'ArrowRight') { ui.month = addMonths(ui.month, 1); render(); }
-  const map = { 1: 'dashboard', 2: 'transactions', 3: 'budgets', 4: 'goals', 5: 'investments', 6: 'settings' };
+  const map = { 1: 'dashboard', 2: 'transactions', 3: 'cards', 4: 'budgets', 5: 'goals', 6: 'investments', 7: 'settings' };
   if (map[e.key]) setView(map[e.key]);
 });
 

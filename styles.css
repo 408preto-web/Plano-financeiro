@@ -274,3 +274,40 @@ dialog::backdrop { background: rgba(10, 15, 20, .45); backdrop-filter: blur(3px)
 .balance-card:active { transform: scale(.98); }
 .balance-card .edit-hint { float: right; color: var(--primary); font-size: 15px; }
 .balance-card .sub b { font-weight: 650; }
+
+/* Cartões de crédito */
+.alerts { display: grid; gap: 10px; margin-bottom: 16px; }
+.alert {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 14px;
+  background: color-mix(in srgb, var(--warn) 13%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+}
+.alert.danger { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.alert-icon { font-size: 22px; }
+.alert-text { flex: 1; min-width: 0; }
+.badge.cc { background: color-mix(in srgb, var(--cc) 16%, transparent); color: var(--cc); }
+.badge.paid { background: color-mix(in srgb, var(--income) 16%, transparent); color: var(--income); }
+.badge.open { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); }
+.badge.overdue, .badge.danger { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+.nav-item { position: relative; }
+.nav-badge {
+  margin-left: auto; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 99px;
+  background: var(--danger); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center;
+}
+.nav-badge[hidden] { display: none; }
+.cc-chip { width: 44px; height: 30px; border-radius: 7px; display: grid; place-items: center; font-size: 16px; color: #fff; flex-shrink: 0; }
+.inv-list { list-style: none; margin: 0; padding: 0; }
+.inv-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.inv-row:last-child { border-bottom: 0; }
+.inv-total { font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+  .nav-badge { position: absolute; top: 2px; right: 12%; margin: 0; min-width: 18px; height: 18px; font-size: 11px; }
+  .inv-row { grid-template-columns: 1fr auto; }
+  .inv-row .row-actions { grid-column: 1 / -1; }
+  .alert { flex-wrap: wrap; }
+}
+@media (max-width: 720px) {
+  .sidebar { gap: 0; padding-left: 2px; padding-right: 2px; }
+  .nav-item { min-width: 0; padding: 6px 1px; font-size: 10px; }
+  .nav-item > span:not(.ni):not(.nav-badge) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

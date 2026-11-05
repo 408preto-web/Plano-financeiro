@@ -1,7 +1,7 @@
 // Service worker: guarda os arquivos do app para funcionar sem internet.
-const CACHE = 'plano-financeiro-v3';
+const CACHE = 'plano-financeiro-v4';
 const ASSETS = [
-  './', 'index.html', 'styles.css', 'app.js', 'invest.js', 'manifest.webmanifest',
+  './', 'index.html', 'styles.css', 'app.js', 'invest.js', 'cards.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 
