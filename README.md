@@ -88,7 +88,10 @@ sem perder nada.
 3. Aguarde ~2 minutos. Abra **SQL Editor** → **New query**, cole todo o conteúdo do arquivo [`supabase.sql`](supabase.sql) e toque em **Run**.
 4. Em **Authentication → Sign In / Providers → Email**, desligue **Confirm email** (para não precisar confirmar o e-mail).
 5. Em **Project Settings → API** (ou **Data API / API Keys**), copie o **Project URL** e a chave **anon public** (ou **publishable**).
-6. Coloque os dois em [`config.js`](config.js) (ou envie para quem mantém o app).
+6. No app (iPad), vá em **Ajustes → Sincronização** e **cole** o endereço e a chave (pode colar o bloco inteiro do botão
+   **Connect → .env.local**; o app encontra os dois sozinho) → **Salvar e testar**. Alternativa: preencher [`config.js`](config.js).
+7. Para o celular: no iPad, depois de entrar, toque em **Mostrar QR code** e aponte a câmera do Android
+   (ou **Compartilhar link** e abra no celular). O app abre já configurado.
 
 **Em cada aparelho:** abra o app → **Ajustes → Sincronização** → no primeiro aparelho, **Criar conta**; nos outros, **Entrar**
 com o mesmo e-mail e senha. Depois de criar sua conta, você pode desligar **Allow new users to sign up** no Supabase
@@ -122,6 +125,7 @@ Em **Ajustes → Carregar dados de exemplo** você pode ver o app preenchido.
 | `sync.js` | Sincronização entre aparelhos (Supabase) |
 | `config.js` | Endereço e chave pública do Supabase |
 | `supabase.sql` | Script que cria a tabela no Supabase |
+| `vendor/qrcode.js` | Gerador de QR code (qrcode-generator 1.4.4, MIT) |
 | `sw.js` | Service worker (funcionamento offline) |
 | `manifest.webmanifest` | Configuração para instalar como app |
 | `icons/` | Ícones do app |

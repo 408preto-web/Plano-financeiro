@@ -17,8 +17,57 @@ const AUTH_KEY = 'plano-financeiro:auth';
 const SYNC_COLLECTIONS = ['transactions', 'categories', 'goals', 'investments', 'cards'];
 const SYNC_FIELDS = ['budgets', 'market', 'openingBalance', 'balanceSetAt', 'invoicePayments', 'settings', 'lastBackup'];
 
-const syncCfg = () => (window.SYNC_CONFIG && window.SYNC_CONFIG.url && window.SYNC_CONFIG.key ? window.SYNC_CONFIG : null);
+const CFG_KEY = 'plano-financeiro:synccfg';
 const sync = { status: 'off', message: '', lastSync: null, timer: null, running: false, again: false };
+
+/** Endereço e chave do Supabase: config.js ou configurados no próprio app (Ajustes / QR code). */
+function syncCfg() {
+  let stored = {};
+  try { stored = JSON.parse(localStorage.getItem(CFG_KEY)) || {}; } catch { /* ignora */ }
+  const base = window.SYNC_CONFIG || {};
+  const url = stored.url || base.url, key = stored.key || base.key;
+  return url && key ? { url: url.replace(/\/+$/, ''), key } : null;
+}
+function setSyncCfg(cfg) { try { cfg ? localStorage.setItem(CFG_KEY, JSON.stringify(cfg)) : localStorage.removeItem(CFG_KEY); } catch { /* ignora */ } }
+
+/** Encontra o endereço e a chave pública em qualquer texto colado (ex.: o bloco .env.local do Supabase). */
+function extractSyncCfg(text) {
+  const t = String(text || '');
+  const url = (t.match(/https:\/\/[a-z0-9-]+\.supabase\.co/i) || [])[0];
+  const key = (t.match(/sb_publishable_[A-Za-z0-9_-]+/) || t.match(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/) || [])[0];
+  if (/sb_secret_|service_role/.test(t) && !key) return { error: 'Essa é a chave secreta. Use a chave publishable (ou anon public).' };
+  return { url: url && url.toLowerCase(), key };
+}
+
+/** Testa se o endereço e a chave funcionam. */
+async function testSyncCfg(cfg) {
+  let res;
+  try {
+    res = await fetch(`${cfg.url}/auth/v1/settings`, { headers: { apikey: cfg.key } });
+  } catch {
+    throw new Error('Não consegui acessar o endereço. Confira o Project URL e a internet.');
+  }
+  if (res.status === 401 || res.status === 403) throw new Error('A chave não foi aceita. Confira se copiou a chave publishable inteira.');
+  if (!res.ok) throw new Error(`O Supabase respondeu com erro ${res.status}. Confira o endereço.`);
+}
+
+/** Link (e QR code) que configura outro aparelho automaticamente. */
+function setupLink() {
+  const cfg = syncCfg();
+  const payload = btoa(JSON.stringify({ u: cfg.url, k: cfg.key })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${location.origin}${location.pathname}#sync=${payload}`;
+}
+function readSetupLink() {
+  const m = location.hash.match(/#sync=([A-Za-z0-9_-]+)/);
+  if (!m) return false;
+  try {
+    const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
+    const { u, k } = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)));
+    if (u && k) setSyncCfg({ url: u, key: k });
+  } catch { /* link inválido */ }
+  history.replaceState(null, '', location.pathname + location.search);
+  return true;
+}
 
 /* ---------- Registro de alterações (carimbo de data em cada mudança) ---------- */
 let snapshot = null;
@@ -223,8 +272,14 @@ function updateSyncBadge() {
 function syncCardHtml() {
   if (!syncCfg()) {
     return `<div class="card mt" id="syncCard"><h2>☁️ Sincronização entre aparelhos</h2>
-      <p class="muted">Ainda não configurada. Depois de criar o projeto gratuito no Supabase, informe o endereço e a chave em <code>config.js</code>
-      (o passo a passo está no README do projeto).</p></div>`;
+      <p class="muted">Cole abaixo o <b>endereço do projeto</b> (Project URL) e a <b>chave publishable</b> (ou anon public) do Supabase.
+        Pode colar o bloco inteiro de texto (ex.: o <code>.env.local</code> do botão <b>Connect</b>): o app encontra os dois sozinho.</p>
+      <label class="field"><span>Endereço e chave do Supabase</span>
+        <textarea id="syncCfgText" rows="4" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://xxxx.supabase.co&#10;sb_publishable_..."></textarea></label>
+      <div id="syncCfgFound" class="muted" style="font-size:13px;margin-top:8px"></div>
+      ${sync.message ? `<p class="neg" style="font-size:14px">${esc(sync.message)}</p>` : ''}
+      <div class="row-actions mt"><button class="btn primary" id="syncCfgSave">Salvar e testar</button></div>
+      <p class="muted" style="font-size:13px">No celular, é mais fácil ler o QR code que aparece aqui no iPad depois de configurar.</p></div>`;
   }
   const a = getAuth();
   if (!a) {
@@ -249,12 +304,79 @@ function syncCardHtml() {
     <div class="row-actions">
       <button class="btn primary" id="syncNowBtn">Sincronizar agora</button>
       <button class="btn" id="syncLogout">Sair desta conta</button>
+    </div>
+    <h3 style="font-size:15px;margin:18px 0 6px">📱 Conectar outro aparelho</h3>
+    <p class="muted" style="font-size:13px;margin-top:0">Abra a câmera do celular e aponte para o QR code (ou envie o link para você mesmo).
+      O app abre já configurado; depois é só entrar com o mesmo e-mail e senha.</p>
+    <div class="row-actions">
+      <button class="btn" id="syncQr">Mostrar QR code</button>
+      <button class="btn" id="syncShare">Compartilhar link</button>
     </div></div>`;
+}
+
+/** Carrega o gerador de QR code (só quando necessário). */
+function loadQrLib() {
+  if (window.qrcode) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'vendor/qrcode.js'; // qrcode-generator 1.4.4 (MIT, Kazuhiko Arase)
+    s.onload = resolve; s.onerror = () => reject(new Error('Não foi possível gerar o QR code. Use “Compartilhar link”.'));
+    document.head.appendChild(s);
+  });
+}
+async function openSetupQr() {
+  try { await loadQrLib(); } catch (e) { toast(e.message); return; }
+  const qr = window.qrcode(0, 'M');
+  qr.addData(setupLink());
+  qr.make();
+  openModal(`
+    <h2>📱 Conectar o celular</h2>
+    <ol class="muted" style="padding-left:20px;margin-top:-4px">
+      <li>No Android, abra a <b>câmera</b> (ou o Google Lens) e aponte para o código.</li>
+      <li>Toque no link que aparecer: o app abre no Chrome já configurado.</li>
+      <li>No Chrome, toque em <b>⋮ → Instalar app</b>.</li>
+      <li>No app, vá em <b>Ajustes → Sincronização → Entrar</b> com o mesmo e-mail e senha.</li>
+    </ol>
+    <div class="qr-box">${qr.createSvgTag({ cellSize: 6, margin: 3, scalable: true })}</div>
+    <div class="modal-actions"><button class="btn primary" value="cancel" formnovalidate>Fechar</button></div>`, () => {});
+}
+async function shareSetupLink() {
+  const url = setupLink();
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Plano Financeiro', text: 'Abra no celular para conectar o Plano Financeiro:', url }); } catch { /* cancelado */ }
+    return;
+  }
+  try { await navigator.clipboard.writeText(url); toast('Link copiado'); } catch { prompt('Copie o link:', url); }
 }
 
 function bindSyncCard(v) {
   const card = $('#syncCard', v);
   if (!card) return;
+  const cfgText = $('#syncCfgText', card);
+  if (cfgText) {
+    const showFound = () => {
+      const c = extractSyncCfg(cfgText.value);
+      $('#syncCfgFound').innerHTML = !cfgText.value.trim() ? ''
+        : c.error ? `<span class="neg">${esc(c.error)}</span>`
+        : `${c.url ? '✅ Endereço: <b>' + esc(c.url) + '</b>' : '❌ Endereço (https://….supabase.co) não encontrado'}<br>
+           ${c.key ? '✅ Chave: <b>' + esc(c.key.slice(0, 22)) + '…</b> (' + c.key.length + ' caracteres)' : '❌ Chave (sb_publishable_… ou eyJ…) não encontrada'}`;
+    };
+    cfgText.addEventListener('input', showFound);
+    $('#syncCfgSave', card).addEventListener('click', async (e) => {
+      const c = extractSyncCfg(cfgText.value);
+      if (c.error || !c.url || !c.key) { sync.message = c.error || 'Cole o endereço e a chave (veja os ✅ acima).'; render(); return; }
+      e.target.disabled = true; e.target.textContent = 'Testando…';
+      try {
+        await testSyncCfg(c);
+        setSyncCfg({ url: c.url, key: c.key });
+        sync.message = ''; sync.status = 'loggedout';
+        updateSyncBadge(); toast('Configuração salva ✅ Agora crie sua conta');
+      } catch (err) { sync.message = err.message; }
+      render();
+    });
+  }
+  $('#syncQr', card)?.addEventListener('click', openSetupQr);
+  $('#syncShare', card)?.addEventListener('click', shareSetupLink);
   const creds = () => ({ email: $('#syncEmail').value.trim(), pass: $('#syncPass').value });
   const doAuth = async (fn, btn) => {
     const { email, pass } = creds();
@@ -281,10 +403,18 @@ function bindSyncCard(v) {
 
 function initSync() {
   takeSnapshot();
+  const handleLink = (delay) => {
+    if (!(readSetupLink() && syncCfg())) return;
+    if (!getAuth()) sync.status = 'loggedout';
+    updateSyncBadge();
+    if (!getAuth()) setTimeout(() => { setView('settings'); toast('Aparelho configurado ✅ Entre com seu e-mail e senha'); $('#syncCard')?.scrollIntoView({ block: 'center' }); }, delay);
+    else syncNow();
+  };
   sync.status = !syncCfg() ? 'off' : getAuth() ? (navigator.onLine ? 'ok' : 'offline') : 'loggedout';
+  handleLink(50);
   updateSyncBadge();
+  window.addEventListener('hashchange', () => handleLink(0)); // link aberto com o app já aberto
   $('#syncStatus')?.addEventListener('click', () => setView('settings'));
-  if (!syncCfg()) return;
   window.addEventListener('online', () => syncNow());
   window.addEventListener('offline', () => { sync.status = 'offline'; updateSyncBadge(); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncNow(); });
