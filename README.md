@@ -18,6 +18,12 @@ Funciona **offline**, abre em tela cheia como um app nativo e **seus dados ficam
     saem do saldo quando você toca em **Pagar fatura**.
   - Limite usado/disponível (inclui parcelas futuras) e lista de faturas (aberta, fechada, vencida, paga).
   - **Aviso no Resumo** e número no menu quando uma fatura vence nos próximos 10 dias ou está vencida.
+- **Contas a pagar com vencimento** (energia, água, boletos…): lance com a data de **vencimento** e "Já pago" desmarcado.
+  - Aviso no topo do Resumo alguns dias antes (antecedência ajustável em Ajustes) e quando vencer.
+  - Botão **Pagar** no aviso permite informar o valor real pago; só então sai do saldo.
+  - **Todo mês (conta fixa)** cria as contas dos próximos meses já como "a pagar".
+  - **🔁 Replicar nos próximos meses** copia uma conta já lançada para os meses seguintes, sem duplicar.
+  - Ao editar uma conta repetida, dá para **aplicar o novo valor aos próximos meses**.
 - **Contas pendentes**: lista do que ainda falta pagar ou receber no mês.
 - **Orçamentos**: limite mensal por categoria com barra de progresso (amarelo a 80%, vermelho quando estoura).
 - **Metas**: reserva de emergência, viagem etc., com quanto guardar por mês para chegar no prazo.

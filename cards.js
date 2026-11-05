@@ -8,7 +8,7 @@
    ========================================================= */
 
 const CARD_COLORS = ['#7c3aed', '#ea580c', '#0f766e', '#2563eb', '#db2777', '#475569', '#ca8a04', '#16a34a'];
-const ALERT_DAYS = 10; // avisar faturas que vencem nos próximos N dias
+const alertDays = () => state.settings?.alertDays ?? 7; // avisar com N dias de antecedência
 
 const cardById = (id) => state.cards.find((c) => c.id === id);
 const fmtDate = (iso) => iso.split('-').reverse().join('/');
@@ -77,8 +77,15 @@ function invoicesBalanceEffect(untilISO, includePending) {
 /** Faturas não pagas vencidas ou que vencem nos próximos dias. */
 function invoiceAlerts() {
   const today = todayISO();
-  const limit = addDaysISO(today, ALERT_DAYS);
+  const limit = addDaysISO(today, alertDays());
   return allInvoices().filter((i) => !i.paid && i.total > 0 && i.dueISO <= limit);
+}
+
+/** Contas a pagar (fora do cartão) vencidas ou que vencem nos próximos dias. */
+function billAlerts() {
+  const limit = addDaysISO(todayISO(), alertDays());
+  return state.transactions.filter((t) => t.type === 'expense' && !t.cardId && !t.paid && t.date <= limit)
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 function addDaysISO(iso, n) {
   const [y, m, d] = iso.split('-').map(Number);
@@ -100,16 +107,41 @@ function dueText(iso) {
 
 /* ---------- Componentes usados em outras telas ---------- */
 function alertsBanner() {
-  const alerts = invoiceAlerts();
-  if (!alerts.length) return '';
-  return `<div class="alerts">${alerts.map((i) => {
-    const overdue = daysUntil(i.dueISO) < 0;
+  const items = [
+    ...invoiceAlerts().map((i) => ({ date: i.dueISO, icon: '💳', title: `Fatura ${i.card.name}`, amount: i.total, btn: `data-payinv="${invoiceKey(i.card.id, i.dueISO)}"` })),
+    ...billAlerts().map((t) => ({ date: t.date, icon: catById(t.categoryId).icon, title: t.description || catById(t.categoryId).name, amount: t.amount, btn: `data-paybill="${t.id}"` })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  if (!items.length) return '';
+  return `<div class="alerts">${items.map((a) => {
+    const overdue = daysUntil(a.date) < 0;
     return `<div class="alert ${overdue ? 'danger' : ''}">
-      <span class="alert-icon">${overdue ? '🚨' : '⏰'}</span>
-      <div class="alert-text"><b>Fatura ${esc(i.card.name)}</b> ${dueText(i.dueISO)} (${fmtDate(i.dueISO)}): <b>${money(i.total)}</b></div>
-      <button class="btn small primary" data-payinv="${invoiceKey(i.card.id, i.dueISO)}">Pagar</button>
+      <span class="alert-icon">${overdue ? '🚨' : a.icon}</span>
+      <div class="alert-text"><b>${esc(a.title)}</b> ${dueText(a.date)} (${fmtDate(a.date)}): <b>${money(a.amount)}</b></div>
+      <button class="btn small primary" ${a.btn}>Pagar</button>
     </div>`;
   }).join('')}</div>`;
+}
+
+/** Confirmar pagamento de uma conta: permite ajustar o valor real e a data. */
+function openBillPay(tx) {
+  openModal(`
+    <h2>✅ Pagar conta</h2>
+    <p class="muted" style="margin-top:-6px"><b>${esc(tx.description || catById(tx.categoryId).name)}</b> · vencimento ${fmtDate(tx.date)}</p>
+    <div class="form-grid">
+      <label class="field"><span>Valor pago (R$)</span><input class="amount-input" name="amount" inputmode="decimal" value="${centsToInput(tx.amount)}" required autocomplete="off"></label>
+      <label class="field"><span>Data do pagamento</span><input type="date" name="date" value="${todayISO()}" required></label>
+    </div>
+    <p class="muted" style="font-size:13px">O valor sai do seu <b>saldo em conta</b>.</p>
+    <div class="modal-actions"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="save">Confirmar pagamento</button></div>`,
+  (action, fd) => {
+    const amount = parseMoney(fd.get('amount'));
+    if (amount <= 0) { toast('Informe o valor pago'); return false; }
+    tx.amount = amount;
+    tx.paid = true;
+    const date = fd.get('date');
+    if (date !== tx.date) tx.paidDate = date; else delete tx.paidDate;
+    save(); render(); toast('Conta paga ✅');
+  }, () => setTimeout(() => { const el = $('[name="amount"]', modalForm); el.focus(); el.select(); }, 50));
 }
 
 /** Linha de fatura para a lista de contas pendentes do Resumo. */
@@ -201,6 +233,11 @@ function renderCards() {
 /** Liga os botões de faturas/cartões presentes em qualquer tela. */
 function bindCardActions(v) {
   $$('[data-payinv]', v).forEach((el) => el.addEventListener('click', (e) => { e.stopPropagation(); openInvoicePay(el.dataset.payinv); }));
+  $$('[data-paybill]', v).forEach((el) => el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const t = state.transactions.find((x) => x.id === el.dataset.paybill);
+    if (t) openBillPay(t);
+  }));
   $$('[data-unpayinv]', v).forEach((el) => el.addEventListener('click', () => {
     if (!confirm('Desfazer o pagamento desta fatura? O valor volta para o saldo em conta.')) return;
     delete state.invoicePayments[el.dataset.unpayinv];
@@ -307,8 +344,11 @@ function openInvoiceDetails(key) {
 
 /** Atualiza o número de avisos no menu e no ícone do app (quando o iPadOS permitir). */
 function updateCardBadges() {
-  const n = invoiceAlerts().length;
-  const el = $('.nav-item[data-view="cards"] .nav-badge');
-  if (el) { el.textContent = n; el.hidden = !n; }
+  const nInv = invoiceAlerts().length;
+  const nBill = billAlerts().length;
+  const set = (view, n) => { const el = $(`.nav-item[data-view="${view}"] .nav-badge`); if (el) { el.textContent = n; el.hidden = !n; } };
+  set('cards', nInv);
+  set('dashboard', nBill + nInv);
+  const n = nInv + nBill;
   try { n ? navigator.setAppBadge?.(n) : navigator.clearAppBadge?.(); } catch { /* sem suporte */ }
 }

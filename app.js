@@ -97,6 +97,7 @@ function defaultState() {
     balanceSetAt: null,
     cards: [],             // cartões de crédito
     invoicePayments: {},   // "cartão|vencimento" -> { date } das faturas pagas
+    settings: { alertDays: 7 }, // avisar contas/faturas com N dias de antecedência
   };
 }
 
@@ -117,6 +118,7 @@ function migrate(data) {
   s.market = { ...defaultMarket(), ...(data.market || {}) };
   if (!Array.isArray(s.market.cdi) || !s.market.cdi.length) s.market.cdi = defaultMarket().cdi;
   if (!Array.isArray(s.cards)) s.cards = [];
+  s.settings = { ...defaultState().settings, ...(data.settings || {}) };
   if (!s.invoicePayments || typeof s.invoicePayments !== 'object') s.invoicePayments = {};
   for (const id of ['c-aplicacao', 'c-resgate']) {
     if (!s.categories.some((c) => c.id === id)) s.categories.push({ ...DEFAULT_CATEGORIES.find((c) => c.id === id) });
@@ -161,7 +163,8 @@ function accountBalance(untilISO, includePending = false) {
   let b = state.openingBalance || 0;
   for (const t of state.transactions) {
     if (t.cardId) continue;
-    if (t.date <= untilISO && (t.paid || includePending)) b += t.type === 'income' ? t.amount : -t.amount;
+    const when = t.paid ? t.paidDate || t.date : t.date; // pago antes do vencimento sai do saldo no dia do pagamento
+    if (when <= untilISO && (t.paid || includePending)) b += t.type === 'income' ? t.amount : -t.amount;
   }
   return b - invoicesBalanceEffect(untilISO, includePending);
 }
@@ -482,6 +485,12 @@ function renderSettings() {
         <p class="muted" style="font-size:13px">${state.transactions.length} lançamentos · ${state.goals.length} metas · último backup: ${state.lastBackup ? new Date(state.lastBackup).toLocaleString('pt-BR') : 'nunca'}</p>
       </div>
       <div class="card mt">
+        <h2>Avisos de vencimento</h2>
+        <label class="field"><span>Avisar contas e faturas com quantos dias de antecedência?</span>
+          <input type="number" id="alertDays" min="0" max="60" value="${state.settings.alertDays}" inputmode="numeric"></label>
+        <p class="muted" style="font-size:13px">Os avisos aparecem no topo do Resumo sempre que você abre o app.</p>
+      </div>
+      <div class="card mt">
         <h2>Instalar no iPad</h2>
         <p class="muted">No Safari, toque em <b>Compartilhar</b> (□↑) → <b>Adicionar à Tela de Início</b>. O app abre em tela cheia e funciona sem internet.</p>
       </div>
@@ -533,6 +542,10 @@ function bindView() {
     $('#importJson').addEventListener('click', () => $('#importFile').click());
     $('#importFile').addEventListener('change', importJson);
     $('#exportCsv').addEventListener('click', exportCsv);
+    $('#alertDays').addEventListener('change', (e) => {
+      state.settings.alertDays = Math.max(0, Math.min(60, Number(e.target.value) || 0));
+      save(); updateCardBadges(); toast('Antecedência dos avisos salva');
+    });
     $('#resetAll').addEventListener('click', () => {
       if (confirm('Apagar TODOS os dados? Esta ação não pode ser desfeita.') && confirm('Tem certeza absoluta?')) {
         state = defaultState(); save(); render(); toast('Dados apagados');
@@ -581,7 +594,7 @@ function openTxForm(tx, defaults = {}) {
       <label class="field full"><span>Descrição</span>
         <input name="description" value="${esc(t.description)}" placeholder="Ex.: Aluguel, Mercado, Salário…" autocomplete="off"></label>
       <label class="field"><span>Categoria</span><select name="categoryId" id="txCat">${catOptions(t.type, t.categoryId)}</select></label>
-      <label class="field"><span>Data</span><input type="date" name="date" value="${t.date}" required></label>
+      <label class="field"><span id="dateLabel">Data</span><input type="date" name="date" value="${t.date}" required></label>
       <label class="field full" id="payWithWrap"><span>Forma de pagamento</span>
         <select name="cardId" id="txCard">${cardOptions(t.cardId)}</select>
         <small class="muted" id="cardHint" style="display:block;margin-top:6px"></small></label>
@@ -590,16 +603,20 @@ function openTxForm(tx, defaults = {}) {
       <label class="field"><span>Repetir</span>
         <select name="repeat" id="txRepeat">
           <option value="once">Não repetir</option>
-          <option value="installments">Parcelado (divide o valor)</option>
-          <option value="monthly">Fixo mensal (mesmo valor)</option>
+          <option value="installments">Parcelado (divide valor)</option>
+          <option value="monthly">Todo mês (conta fixa)</option>
         </select></label>
       <label class="field" id="repeatCountWrap" style="visibility:hidden"><span>Quantidade de meses</span>
-        <input type="number" name="count" min="2" max="120" value="12" inputmode="numeric"></label>`}
+        <input type="number" name="count" min="2" max="120" value="12" inputmode="numeric"></label>
+      <small class="muted full" id="repeatHint" style="display:none;margin-top:-6px">Os próximos meses ficam salvos como contas <b>a pagar</b>, com o mesmo valor e dia de vencimento.
+        Quando a conta chegar, é só abrir e ajustar o valor.</small>`}
+      ${isEdit && t.groupId && !t.installment ? `<label class="check full"><input type="checkbox" name="applyFuture"><span>Aplicar valor, descrição e categoria também aos <b>próximos meses</b> desta conta</span></label>` : ''}
       <label class="field full"><span>Observações</span><textarea name="notes" rows="2">${esc(t.notes)}</textarea></label>
     </div>
     <div class="modal-actions">
       ${isEdit ? '<button class="btn danger" value="delete" formnovalidate>Excluir</button>' : ''}
       ${isEdit && t.groupId ? '<button class="btn danger" value="deleteFuture" formnovalidate>Excluir este e próximos</button>' : ''}
+      ${isEdit && !t.installment ? '<button class="btn" value="replicate" formnovalidate>🔁 Replicar nos próximos meses</button>' : ''}
       <span class="spacer"></span>
       <button class="btn" value="cancel" formnovalidate>Cancelar</button>
       <button class="btn primary" value="save">Salvar</button>
@@ -618,6 +635,7 @@ function openTxForm(tx, defaults = {}) {
       save(); render(); toast('Lançamentos excluídos');
       return;
     }
+    if (action === 'replicate') { setTimeout(() => openReplicateForm(tx), 0); return; }
     const amount = parseMoney(fd.get('amount'));
     if (amount <= 0) { toast('Informe um valor maior que zero'); return false; }
     const data = {
@@ -633,7 +651,14 @@ function openTxForm(tx, defaults = {}) {
     // Compra no cartão: o lançamento está "efetivado"; o que fica pendente é a fatura.
     if (data.cardId) data.paid = true;
     if (isEdit) {
+      if (data.paid && !tx.paid && todayISO() < data.date) data.paidDate = todayISO(); // pago antes do vencimento
+      if (!data.paid) delete tx.paidDate;
       Object.assign(tx, data);
+      if (fd.get('applyFuture') === 'on') {
+        const next = state.transactions.filter((x) => x.groupId === tx.groupId && x.date > tx.date && (!x.paid || x.cardId));
+        next.forEach((x) => Object.assign(x, { amount: data.amount, description: data.description, categoryId: data.categoryId, cardId: data.cardId, notes: data.notes }));
+        if (next.length) toast(`Atualizado este e mais ${next.length} mês(es)`);
+      }
     } else {
       const repeat = fd.get('repeat');
       const count = Math.max(2, Math.min(120, Number(fd.get('count')) || 2));
@@ -655,7 +680,8 @@ function openTxForm(tx, defaults = {}) {
         }
       }
     }
-    save(); render(); toast(isEdit ? 'Lançamento atualizado' : 'Lançamento salvo');
+    save(); render();
+    if (!(isEdit && fd.get('applyFuture') === 'on')) toast(isEdit ? 'Lançamento atualizado' : 'Lançamento salvo');
   }, () => {
     const amountEl = $('[name="amount"]', modalForm);
     if (!isEdit) setTimeout(() => amountEl.focus(), 50);
@@ -665,6 +691,8 @@ function openTxForm(tx, defaults = {}) {
       $('#payWithWrap').style.display = type === 'expense' ? '' : 'none';
       $('#paidWrap').style.display = card ? 'none' : '';
       const date = $('[name="date"]', modalForm).value;
+      const paid = $('[name="paid"]', modalForm).checked;
+      $('#dateLabel').textContent = card || paid ? 'Data' : type === 'expense' ? 'Vencimento' : 'Data prevista';
       $('#cardHint').innerHTML = card && date
         ? `Não sai do saldo agora: entra na fatura que vence em <b>${fmtDate(invoiceFor(card, date).dueISO)}</b>.`
         : type === 'expense' ? 'Sai do saldo em conta quando marcado como pago.' : '';
@@ -675,11 +703,43 @@ function openTxForm(tx, defaults = {}) {
       syncPay();
     }));
     $('#txCard').addEventListener('change', syncPay);
-    $('[name="date"]', modalForm).addEventListener('change', syncPay);
+    $('[name="paid"]', modalForm).addEventListener('change', syncPay);
+    $('[name="date"]', modalForm).addEventListener('change', (e) => {
+      // Lançamento novo com data futura: provavelmente é uma conta a pagar/receber.
+      if (!isEdit && e.target.value > todayISO()) $('[name="paid"]', modalForm).checked = false;
+      syncPay();
+    });
     syncPay();
     $('#txRepeat')?.addEventListener('change', (e) => {
       $('#repeatCountWrap').style.visibility = e.target.value === 'once' ? 'hidden' : 'visible';
+      $('#repeatHint').style.display = e.target.value === 'monthly' ? '' : 'none';
     });
+  });
+}
+
+/** Copia um lançamento para os meses seguintes como contas futuras (a pagar/receber). */
+function openReplicateForm(tx) {
+  openModal(`
+    <h2>🔁 Replicar nos próximos meses</h2>
+    <p class="muted" style="margin-top:-6px"><b>${esc(tx.description || catById(tx.categoryId).name)}</b> · ${money(tx.amount)} · dia ${Number(tx.date.slice(8))}</p>
+    <label class="field"><span>Quantos meses seguintes?</span>
+      <input type="number" name="count" min="1" max="120" value="11" inputmode="numeric" required></label>
+    <p class="muted" style="font-size:13px">As cópias ficam salvas como contas <b>${tx.type === 'income' ? 'a receber' : 'a pagar'}</b>, no mesmo dia de cada mês e com o mesmo valor.
+      Se o valor mudar (ex.: energia), abra a conta do mês quando ela chegar e ajuste. Meses que já têm esta conta não são duplicados.</p>
+    <div class="modal-actions"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="save">Replicar</button></div>`,
+  (action, fd) => {
+    const n = Math.max(1, Math.min(120, Number(fd.get('count')) || 1));
+    tx.groupId ||= uid();
+    const months = new Set(state.transactions.filter((x) => x.groupId === tx.groupId).map((x) => monthOf(x.date)));
+    let created = 0;
+    for (let i = 1; i <= n; i++) {
+      const date = addMonthsToDate(tx.date, i);
+      if (months.has(monthOf(date))) continue;
+      const { id, createdAt, paidDate, installment, ...rest } = tx;
+      state.transactions.push({ ...rest, id: uid(), createdAt: Date.now() + i, date, paid: !!tx.cardId });
+      created++;
+    }
+    save(); render(); toast(created ? `${created} mês(es) criados` : 'Esses meses já tinham esta conta');
   });
 }
 
