@@ -1,7 +1,7 @@
 // Service worker: guarda os arquivos do app para funcionar sem internet.
-const CACHE = 'plano-financeiro-v7';
+const CACHE = 'plano-financeiro-v8';
 const ASSETS = [
-  './', 'index.html', 'styles.css', 'app.js', 'invest.js', 'cards.js', 'quick.js', 'manifest.webmanifest',
+  './', 'index.html', 'styles.css', 'app.js', 'invest.js', 'cards.js', 'quick.js', 'sync.js', 'config.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 
@@ -19,6 +19,7 @@ self.addEventListener('activate', (e) => {
 // Rede primeiro (para receber atualizações), cache como reserva quando offline.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  if (new URL(e.request.url).origin !== self.location.origin) return; // não guarda respostas da nuvem (Supabase)
   e.respondWith(
     fetch(e.request)
       .then((res) => {

@@ -76,6 +76,24 @@ Endereço do app: **https://408preto-web.github.io/Plano-financeiro/**
 2. Toque em **Compartilhar** (quadrado com seta ↑) → **Adicionar à Tela de Início**.
 3. Pronto! Abra pelo ícone **Finanças**: tela cheia e funciona sem internet.
 
+## ☁️ Sincronizar iPad e celular (Supabase, gratuito)
+
+Com a sincronização, o que você lança em um aparelho aparece no outro. Cada aparelho continua funcionando
+sem internet e sincroniza quando a conexão volta; lançamentos feitos nos dois ao mesmo tempo são juntados,
+sem perder nada.
+
+**Configuração (uma vez só):**
+1. Acesse **supabase.com** → **Start your project** → entre (pode usar a conta do GitHub).
+2. **New project**: nome `plano-financeiro`, crie uma senha do banco (guarde-a), região **South America (São Paulo)** → **Create new project**.
+3. Aguarde ~2 minutos. Abra **SQL Editor** → **New query**, cole todo o conteúdo do arquivo [`supabase.sql`](supabase.sql) e toque em **Run**.
+4. Em **Authentication → Sign In / Providers → Email**, desligue **Confirm email** (para não precisar confirmar o e-mail).
+5. Em **Project Settings → API** (ou **Data API / API Keys**), copie o **Project URL** e a chave **anon public** (ou **publishable**).
+6. Coloque os dois em [`config.js`](config.js) (ou envie para quem mantém o app).
+
+**Em cada aparelho:** abra o app → **Ajustes → Sincronização** → no primeiro aparelho, **Criar conta**; nos outros, **Entrar**
+com o mesmo e-mail e senha. Depois de criar sua conta, você pode desligar **Allow new users to sign up** no Supabase
+(Authentication → Sign In / Providers) para ninguém mais criar contas no seu projeto.
+
 ## ⚠️ Sobre seus dados
 
 - Ficam salvos no armazenamento local do app no iPad. Use sempre o app pelo ícone da Tela de Início.
@@ -101,6 +119,9 @@ Em **Ajustes → Carregar dados de exemplo** você pode ver o app preenchido.
 | `invest.js` | Investimentos, CDI/IPCA e simulador |
 | `cards.js` | Cartões de crédito, faturas e avisos |
 | `quick.js` | Lançamento rápido por frase |
+| `sync.js` | Sincronização entre aparelhos (Supabase) |
+| `config.js` | Endereço e chave pública do Supabase |
+| `supabase.sql` | Script que cria a tabela no Supabase |
 | `sw.js` | Service worker (funcionamento offline) |
 | `manifest.webmanifest` | Configuração para instalar como app |
 | `icons/` | Ícones do app |

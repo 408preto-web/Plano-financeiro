@@ -136,11 +136,13 @@ const ui = {
 };
 
 function save() {
+  stampChanges(); // registra o que mudou, para a sincronização entre aparelhos
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
     toast('Não foi possível salvar os dados!');
   }
+  scheduleSync();
 }
 
 const catById = (id) => state.categories.find((c) => c.id === id) || { name: 'Sem categoria', icon: '❔', color: '#94a3b8', type: 'expense' };
@@ -477,7 +479,8 @@ function renderSettings() {
     <div>
       <div class="card">
         <h2>Backup dos dados</h2>
-        <p class="muted">Seus dados ficam salvos <b>somente neste iPad</b>. Faça backup regularmente e guarde o arquivo no app Arquivos / iCloud Drive.</p>
+        <p class="muted">${getAuth() ? 'Seus dados ficam neste aparelho e na nuvem (sincronização ligada). Mesmo assim, um backup de vez em quando não faz mal.'
+          : 'Seus dados ficam salvos <b>somente neste aparelho</b>. Faça backup regularmente e guarde o arquivo no app Arquivos / iCloud Drive.'}</p>
         <div class="row-actions">
           <button class="btn primary" id="exportJson">Exportar backup</button>
           <button class="btn" id="importJson">Restaurar backup</button>
@@ -488,6 +491,7 @@ function renderSettings() {
         </div>
         <p class="muted" style="font-size:13px">${state.transactions.length} lançamentos · ${state.goals.length} metas · último backup: ${state.lastBackup ? new Date(state.lastBackup).toLocaleString('pt-BR') : 'nunca'}</p>
       </div>
+      ${syncCardHtml()}
       <div class="card mt">
         <h2>Avisos de vencimento</h2>
         <label class="field"><span>Avisar contas e faturas com quantos dias de antecedência?</span>
@@ -495,8 +499,10 @@ function renderSettings() {
         <p class="muted" style="font-size:13px">Os avisos aparecem no topo do Resumo sempre que você abre o app.</p>
       </div>
       <div class="card mt">
-        <h2>Instalar no iPad</h2>
-        <p class="muted">No Safari, toque em <b>Compartilhar</b> (□↑) → <b>Adicionar à Tela de Início</b>. O app abre em tela cheia e funciona sem internet.</p>
+        <h2>Instalar como app</h2>
+        <p class="muted"><b>iPad/iPhone:</b> no Safari, toque em <b>Compartilhar</b> (□↑) → <b>Adicionar à Tela de Início</b>.<br>
+          <b>Android:</b> no Chrome, toque no menu <b>⋮</b> → <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>).<br>
+          O app abre em tela cheia e funciona sem internet.</p>
       </div>
       <div class="card mt">
         <h2>Zona de perigo</h2>
@@ -547,12 +553,14 @@ function bindView() {
     $('#importJson').addEventListener('click', () => $('#importFile').click());
     $('#importFile').addEventListener('change', importJson);
     $('#exportCsv').addEventListener('click', exportCsv);
+    bindSyncCard(v);
     $('#alertDays').addEventListener('change', (e) => {
       state.settings.alertDays = Math.max(0, Math.min(60, Number(e.target.value) || 0));
       save(); updateCardBadges(); toast('Antecedência dos avisos salva');
     });
     $('#resetAll').addEventListener('click', () => {
-      if (confirm('Apagar TODOS os dados? Esta ação não pode ser desfeita.') && confirm('Tem certeza absoluta?')) {
+      const warn = getAuth() ? '\n\nATENÇÃO: com a sincronização ligada, os dados também serão apagados da nuvem e dos outros aparelhos.' : '';
+      if (confirm('Apagar TODOS os dados? Esta ação não pode ser desfeita.' + warn) && confirm('Tem certeza absoluta?')) {
         state = defaultState(); save(); render(); toast('Dados apagados');
       }
     });
@@ -1010,4 +1018,5 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
+initSync();
 setView('dashboard');
