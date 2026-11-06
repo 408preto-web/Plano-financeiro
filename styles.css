@@ -350,3 +350,22 @@ button.chip { cursor: pointer; }
 }
 .qr-box { background: #fff; padding: 12px; border-radius: 14px; width: min(320px, 100%); margin: 8px auto 0; }
 .qr-box svg { width: 100%; height: auto; display: block; }
+
+/* Notificações do banco */
+.inbox { margin-bottom: 16px; border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); background: color-mix(in srgb, var(--primary) 5%, var(--surface)); }
+.inbox-list { list-style: none; margin: 0; padding: 0; }
+.inbox-row { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.inbox-row:last-child { border-bottom: 0; }
+.inbox-main { min-width: 0; }
+.inbox-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.inbox-src { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.inbox-src summary { cursor: pointer; }
+.steps { padding-left: 20px; margin: 8px 0 14px; line-height: 1.5; }
+.steps li { margin-bottom: 10px; }
+.copy-field { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; margin: 6px 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.copy-field span { grid-column: 1 / -1; font-size: 12px; font-weight: 600; color: var(--muted); }
+.copy-field code { font-size: 12px; word-break: break-all; }
+@media (max-width: 720px) {
+  .inbox-row { grid-template-columns: 44px 1fr; }
+  .inbox-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}

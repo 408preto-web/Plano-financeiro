@@ -304,6 +304,7 @@ function renderDashboard() {
 
   return `
   ${alertsBanner()}
+  ${inboxBanner()}
   ${quickBar()}
   <div class="grid cols-4">
     <button class="card stat balance-card" id="balanceCard" aria-label="Ajustar saldo em conta">
@@ -492,6 +493,7 @@ function renderSettings() {
         <p class="muted" style="font-size:13px">${state.transactions.length} lançamentos · ${state.goals.length} metas · último backup: ${state.lastBackup ? new Date(state.lastBackup).toLocaleString('pt-BR') : 'nunca'}</p>
       </div>
       ${syncCardHtml()}
+      ${inboxCardHtml()}
       <div class="card mt">
         <h2>Avisos de vencimento</h2>
         <label class="field"><span>Avisar contas e faturas com quantos dias de antecedência?</span>
@@ -523,6 +525,7 @@ function bindView() {
   $('#balanceCard', v)?.addEventListener('click', openBalanceForm);
   bindCardActions(v);
   bindQuick(v);
+  bindInbox(v);
 
   if (ui.view === 'transactions') {
     const fq = $('#fq');
@@ -554,6 +557,7 @@ function bindView() {
     $('#importFile').addEventListener('change', importJson);
     $('#exportCsv').addEventListener('click', exportCsv);
     bindSyncCard(v);
+    bindInboxCard(v);
     $('#alertDays').addEventListener('change', (e) => {
       state.settings.alertDays = Math.max(0, Math.min(60, Number(e.target.value) || 0));
       save(); updateCardBadges(); toast('Antecedência dos avisos salva');

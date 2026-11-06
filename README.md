@@ -97,6 +97,20 @@ sem perder nada.
 com o mesmo e-mail e senha. Depois de criar sua conta, você pode desligar **Allow new users to sign up** no Supabase
 (Authentication → Sign In / Providers) para ninguém mais criar contas no seu projeto.
 
+## 📥 Notificações do banco (Android + MacroDroid)
+
+As notificações de compra e Pix dos apps dos bancos podem aparecer no Resumo como **“Detectado nas notificações do banco”**,
+prontas para **Lançar**, **Editar** ou **Ignorar** (propagandas e avisos são ignorados sozinhos).
+
+1. No Supabase, rode o script [`supabase-notificacoes.sql`](supabase-notificacoes.sql) (SQL Editor → New query → Run).
+2. No celular, abra o app → **Ajustes → Notificações do banco → Ativar notificações do banco**.
+3. Instale o **MacroDroid** e crie a macro seguindo os passos que aparecem na tela (os campos têm botão **Copiar**):
+   gatilho **Notificação recebida** (apps dos bancos) → ação **Requisição HTTP** (POST) para a função `add_notification`.
+4. Toque em **Enviar notificação de teste** para conferir.
+
+Formatos já reconhecidos: compra no cartão Santander (“Compra no cartão final 6185, de R$ 10,00, em 06/11/26, … em LOJA”),
+Nubank / NuPay (“R$ 14,99 em 1x no crédito … APROVADO em Uber”, “Compra de R$ … APROVADA em … final 1234”), Pix recebido e Pix enviado.
+
 ## ⚠️ Sobre seus dados
 
 - Ficam salvos no armazenamento local do app no iPad. Use sempre o app pelo ícone da Tela de Início.
@@ -123,6 +137,8 @@ Em **Ajustes → Carregar dados de exemplo** você pode ver o app preenchido.
 | `cards.js` | Cartões de crédito, faturas e avisos |
 | `quick.js` | Lançamento rápido por frase |
 | `sync.js` | Sincronização entre aparelhos (Supabase) |
+| `inbox.js` | Notificações do banco → lançamentos |
+| `supabase-notificacoes.sql` | Script da caixa de entrada de notificações |
 | `config.js` | Endereço e chave pública do Supabase |
 | `supabase.sql` | Script que cria a tabela no Supabase |
 | `vendor/qrcode.js` | Gerador de QR code (qrcode-generator 1.4.4, MIT) |

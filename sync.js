@@ -219,6 +219,7 @@ async function syncNow({ manual = false } = {}) {
     }
     sync.lastSync = new Date();
     sync.status = 'ok'; sync.message = '';
+    fetchInbox(); // notificações do banco (inbox.js)
     if (manual) toast('Sincronizado ☁️');
   } catch (e) {
     sync.status = navigator.onLine ? 'error' : 'offline';
